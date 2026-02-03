@@ -40,18 +40,21 @@ enum Role {
 }
 
 model User {
-  id             String   @id @default(uuid())
-  email          String   @unique
-  password       String
-  name           String
-  role           Role     @default(VIEWER)
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String    @id @default(uuid())
+  email            String    @unique
+  password         String
+  name             String
+  role             Role      @default(VIEWER)
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  isActive         Boolean   @default(true)
+  lastLogin        DateTime?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  createdPurchaseOrders PurchaseOrder[] @relation("CreatedBy")
+  createdPurchaseOrders  PurchaseOrder[] @relation("CreatedBy")
   approvedPurchaseOrders PurchaseOrder[] @relation("ApprovedBy")
   auditLogs              AuditLog[]
   createdKanbanCards     KanbanCard[]

@@ -6,9 +6,10 @@ import { itemsApi } from '@/lib/api';
 import { 
   Plus, AlertCircle, CheckCircle, Bot, 
   Download, Upload, FileSpreadsheet, X,
-  FileDown, FileUp, CheckCircle2
+  FileDown, FileUp, CheckCircle2, FileText
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { generateInventoryReportPDF } from '@/lib/pdf';
 
 export default function InventoryPage() {
   const queryClient = useQueryClient();
@@ -298,7 +299,16 @@ export default function InventoryPage() {
             className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
           >
             <FileDown className="w-4 h-4" />
-            Exportar Estoque
+            Exportar Excel
+          </button>
+          
+          <button
+            onClick={() => items && generateInventoryReportPDF(items)}
+            disabled={!items || items.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+          >
+            <FileText className="w-4 h-4" />
+            Relatório PDF
           </button>
           
           <button

@@ -2,8 +2,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi, itemsApi } from '@/lib/api';
-import { CheckCircle, Send, Package, Plus, Bot, ShoppingCart } from 'lucide-react';
+import { CheckCircle, Send, Package, Plus, Bot, ShoppingCart, FileText, Download } from 'lucide-react';
 import { useState } from 'react';
+import { generatePurchaseOrderPDF } from '@/lib/pdf';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Rascunho',
@@ -201,6 +202,15 @@ export default function PurchaseOrdersPage() {
                     ✓ Pedido Concluído
                   </span>
                 )}
+
+                {/* PDF Export */}
+                <button
+                  onClick={() => generatePurchaseOrderPDF(po)}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                >
+                  <FileText className="w-4 h-4" />
+                  Exportar PDF
+                </button>
               </div>
 
               {po.observacoes && (

@@ -18,6 +18,7 @@
     "@fastify/static": "7",
     "@nestjs/common": "^10.3.0",
     "@nestjs/core": "^10.3.0",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-fastify": "^10.3.0",
     "@nestjs/swagger": "^7.2.0",
     "@nestjs/throttler": "^5.1.1",
@@ -28,6 +29,7 @@
     "class-validator": "^0.14.1",
     "fastify": "^4.25.2",
     "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.3",
     "xlsx": "^0.18.5",
     "zod": "^3.22.4"
   },
@@ -36,6 +38,7 @@
     "@nestjs/schematics": "^10.1.0",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.11.0",
+    "@types/nodemailer": "^7.0.9",
     "eslint": "^8.56.0",
     "prisma": "^5.22.0",
     "tsx": "^4.7.0",
