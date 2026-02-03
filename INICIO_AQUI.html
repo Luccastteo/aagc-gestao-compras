@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 AAGC SaaS - Início Rápido</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 1.2em;
+            margin-bottom: 40px;
+            opacity: 0.9;
+        }
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 40px 0;
+        }
+        .step {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 30px;
+            border-radius: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .step:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .step-number {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            background: #fff;
+            color: #667eea;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 40px;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 15px;
+        }
+        .step h3 {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+        }
+        .code-box {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+            border-left: 4px solid #4ade80;
+        }
+        .btn {
+            display: inline-block;
+            background: #fff;
+            color: #667eea;
+            padding: 15px 30px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 10px;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        .warning {
+            background: rgba(255, 193, 7, 0.2);
+            border: 2px solid #ffc107;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .success {
+            background: rgba(76, 175, 80, 0.2);
+            border: 2px solid #4caf50;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .links {
+            text-align: center;
+            margin: 40px 0;
+        }
+        .feature {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+        }
+        .feature-icon {
+            font-size: 2em;
+            margin-right: 15px;
+        }
+        ul {
+            margin: 15px 0;
+            padding-left: 20px;
+        }
+        li {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 AAGC SaaS</h1>
+        <p class="subtitle">Sistema Multi-Tenant de Gestão de Compras</p>
+
+        <div class="warning">
+            <h3>⚠️ IMPORTANTE ANTES DE COMEÇAR</h3>
+            <p><strong>Docker Desktop precisa estar rodando!</strong></p>
+            <ol>
+                <li>Abra o <strong>Docker Desktop</strong> no menu Iniciar</li>
+                <li>Aguarde até o ícone ficar verde na barra de tarefas</li>
+                <li>SÓ DEPOIS execute os comandos abaixo</li>
+            </ol>
+        </div>
+
+        <div class="steps">
+            <div class="step">
+                <span class="step-number">1</span>
+                <h3>Instalar</h3>
+                <p>Abra o PowerShell nesta pasta e execute:</p>
+                <div class="code-box">.\install-windows.bat</div>
+                <p><small>⏱️ Tempo: 2-3 minutos</small></p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <h3>Iniciar</h3>
+                <p>Após a instalação, execute:</p>
+                <div class="code-box">.\start-all.bat</div>
+                <p><small>✅ Deixe esta janela aberta</small></p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <h3>Acessar</h3>
+                <p>Abra seu navegador em:</p>
+                <div class="code-box">http://localhost:3000</div>
+                <p><strong>Login:</strong> manager@demo.com<br>
+                   <strong>Senha:</strong> demo123</p>
+            </div>
+        </div>
+
+        <div class="success">
+            <h3>✨ O que você vai ver:</h3>
+            <div class="feature">
+                <span class="feature-icon">📊</span>
+                <div>
+                    <strong>Dashboard Completo</strong><br>
+                    Métricas em tempo real, alertas de estoque crítico
+                </div>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📦</span>
+                <div>
+                    <strong>Gestão de Inventário</strong><br>
+                    CRUD completo, análise automática, sugestões de compra
+                </div>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🛒</span>
+                <div>
+                    <strong>Purchase Orders</strong><br>
+                    Ciclo completo: Draft → Approved → Sent → Delivered
+                </div>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📋</span>
+                <div>
+                    <strong>Kanban Board</strong><br>
+                    Drag & drop funcional, workflow de compras
+                </div>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📝</span>
+                <div>
+                    <strong>Audit Logs</strong><br>
+                    Trilha completa de auditoria, before/after de cada ação
+                </div>
+            </div>
+        </div>
+
+        <h2 style="text-align: center; margin: 40px 0;">🎮 Teste Estas Funcionalidades</h2>
+
+        <div class="steps">
+            <div class="step">
+                <h3>📦 Criar Produto</h3>
+                <ol>
+                    <li>Vá em "Inventory"</li>
+                    <li>Clique "New Item"</li>
+                    <li>Preencha os dados</li>
+                    <li>Salve</li>
+                </ol>
+                <p><strong>Resultado:</strong> Produto aparece instantaneamente!</p>
+            </div>
+
+            <div class="step">
+                <h3>🤖 Análise Automática</h3>
+                <ol>
+                    <li>Em "Inventory"</li>
+                    <li>Clique "Analyze Stock"</li>
+                    <li>Veja sugestões de compra</li>
+                    <li>Calculado automaticamente!</li>
+                </ol>
+                <p><strong>Resultado:</strong> Sistema sugere o que comprar!</p>
+            </div>
+
+            <div class="step">
+                <h3>✅ Aprovar Pedido</h3>
+                <ol>
+                    <li>Vá em "Purchase Orders"</li>
+                    <li>Clique "Approve"</li>
+                    <li>Clique "Send to Supplier"</li>
+                    <li>Clique "Receive Order"</li>
+                </ol>
+                <p><strong>Resultado:</strong> Estoque atualizado!</p>
+            </div>
+        </div>
+
+        <div class="links">
+            <h3>📚 Documentação</h3>
+            <a href="README.md" class="btn">📖 README Completo</a>
+            <a href="START_HERE.md" class="btn">🚀 Guia de Início</a>
+            <a href="COMO_VER_FUNCIONANDO.md" class="btn">🎯 Como Usar</a>
+            <a href="COMMANDS.md" class="btn">⌨️ Comandos</a>
+        </div>
+
+        <div class="warning" style="margin-top: 40px;">
+            <h3>🆘 Problemas?</h3>
+            <ul>
+                <li><strong>Docker não roda:</strong> Abra Docker Desktop manualmente</li>
+                <li><strong>Porta ocupada:</strong> Feche outros programas usando porta 3000</li>
+                <li><strong>Erro de instalação:</strong> Leia SOLUCAO_RAPIDA.md</li>
+            </ul>
+            <p style="margin-top: 15px;">
+                <strong>Verificar se Docker está OK:</strong>
+                <div class="code-box">docker --version<br>docker ps</div>
+            </p>
+        </div>
+
+        <div style="text-align: center; margin-top: 50px; padding-top: 30px; border-top: 2px solid rgba(255,255,255,0.2);">
+            <h2>🎉 Sistema 100% Funcional</h2>
+            <p style="font-size: 1.2em; margin: 20px 0;">
+                ✅ Nenhum mock • ✅ Tudo em banco real • ✅ Multi-tenant • ✅ RBAC
+            </p>
+            <p style="opacity: 0.8;">
+                Desenvolvido com NestJS, Next.js, PostgreSQL, Redis, Prisma<br>
+                Arquitetura SaaS profissional, pronta para produção
+            </p>
+        </div>
+    </div>
+</body>
+</html>

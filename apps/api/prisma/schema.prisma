@@ -1,0 +1,271 @@
+// AAGC SaaS Multi-Tenant Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== AUTH & TENANCY ====================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("free") // free, pro, enterprise
+  status    String   @default("active") // active, suspended
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  suppliers      Supplier[]
+  items          Item[]
+  purchaseOrders PurchaseOrder[]
+  kanbanBoards   KanbanBoard[]
+  kanbanCards    KanbanCard[]
+  auditLogs      AuditLog[]
+  commsLogs      CommsLog[]
+
+  @@map("organizations")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  OPERATOR
+  VIEWER
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  password       String
+  name           String
+  role           Role     @default(VIEWER)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdPurchaseOrders PurchaseOrder[] @relation("CreatedBy")
+  approvedPurchaseOrders PurchaseOrder[] @relation("ApprovedBy")
+  auditLogs              AuditLog[]
+  createdKanbanCards     KanbanCard[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+// ==================== SUPPLIERS ====================
+
+model Supplier {
+  id             String   @id @default(uuid())
+  codigo         String
+  nome           String
+  cnpj           String?
+  email          String?
+  telefone       String?
+  whatsapp       String?
+  prazoMedioDias Int      @default(7)
+  qualidade      String   @default("ok") // excelente, bom, ok, ruim
+  status         String   @default("ativo")
+  observacoes    String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items          Item[]
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([organizationId, codigo])
+  @@index([organizationId])
+  @@map("suppliers")
+}
+
+// ==================== INVENTORY ====================
+
+model Item {
+  id                     String   @id @default(uuid())
+  sku                    String
+  descricao              String
+  categoria              String?
+  unidade                String   @default("UN")
+  saldo                  Int      @default(0)
+  minimo                 Int      @default(0)
+  maximo                 Int      @default(100)
+  leadTimeDays           Int      @default(7)
+  custoUnitario          Float    @default(0)
+  supplierId             String?
+  supplier               Supplier? @relation(fields: [supplierId], references: [id])
+  localizacao            String?
+  observacoes            String?
+  organizationId         String
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  purchaseOrderItems PurchaseOrderItem[]
+  movements          Movement[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@index([organizationId, saldo])
+  @@map("items")
+}
+
+model Movement {
+  id          String   @id @default(uuid())
+  itemId      String
+  item        Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  tipo        String   // ENTRADA, SAIDA, AJUSTE
+  quantidade  Int
+  saldoAntes  Int
+  saldoDepois Int
+  motivo      String?
+  responsavel String
+  createdAt   DateTime @default(now())
+
+  @@index([itemId])
+  @@map("movements")
+}
+
+// ==================== PURCHASE ORDERS ====================
+
+enum POStatus {
+  DRAFT
+  APPROVED
+  SENT
+  DELIVERED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id                String   @id @default(uuid())
+  codigo            String
+  status            POStatus @default(DRAFT)
+  supplierId        String
+  supplier          Supplier @relation(fields: [supplierId], references: [id])
+  valorTotal        Float    @default(0)
+  observacoes       String?
+  createdById       String
+  createdBy         User     @relation("CreatedBy", fields: [createdById], references: [id])
+  approvedById      String?
+  approvedBy        User?    @relation("ApprovedBy", fields: [approvedById], references: [id])
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dataAbertura      DateTime @default(now())
+  dataAprovacao     DateTime?
+  dataEnvio         DateTime?
+  previsaoEntrega   DateTime?
+  dataRecebimento   DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  items       PurchaseOrderItem[]
+  kanbanCards KanbanCard[]
+
+  @@unique([organizationId, codigo])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  itemId          String
+  item            Item          @relation(fields: [itemId], references: [id])
+  quantidade      Int
+  precoUnitario   Float
+  valorTotal      Float
+
+  @@index([purchaseOrderId])
+  @@map("purchase_order_items")
+}
+
+// ==================== KANBAN ====================
+
+model KanbanBoard {
+  id             String   @id @default(uuid())
+  nome           String
+  descricao      String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  cards KanbanCard[]
+
+  @@index([organizationId])
+  @@map("kanban_boards")
+}
+
+enum KanbanStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model KanbanCard {
+  id              String        @id @default(uuid())
+  titulo          String
+  descricao       String?
+  status          KanbanStatus  @default(TODO)
+  posicao         Int           @default(0)
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  boardId         String
+  board           KanbanBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  createdById     String
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([boardId, status])
+  @@map("kanban_cards")
+}
+
+// ==================== AUDIT & LOGS ====================
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  actorUserId    String
+  actorUser      User     @relation(fields: [actorUserId], references: [id])
+  action         String   // CREATE, UPDATE, DELETE, APPROVE, SEND, RECEIVE
+  entity         String   // Item, PurchaseOrder, KanbanCard, etc
+  entityId       String
+  before         String?  @db.Text // JSON
+  after          String?  @db.Text // JSON
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([organizationId, entity])
+  @@index([organizationId, actorUserId])
+  @@map("audit_logs")
+}
+
+model CommsLog {
+  id             String   @id @default(uuid())
+  tipo           String   // EMAIL, WHATSAPP
+  destinatario   String
+  assunto        String?
+  mensagem       String   @db.Text
+  status         String   // SENT, FAILED, SIMULATED
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("comms_logs")
+}
