@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, Headers, UnauthorizedException } from '@ne
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
+import { LoginDto, RefreshTokenDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto } from './dto';
 
 @Controller('auth')
 export class AuthController {
@@ -16,15 +17,11 @@ export class AuthController {
   // Login with JWT tokens
   @Public()
   @Post('login')
-  async login(@Body() body: { email: string; password: string }) {
+  async login(@Body() loginDto: LoginDto) {
     try {
-      console.log('🔐 Login attempt:', body.email);
-      
-      if (!body.email || !body.password) {
-        throw new UnauthorizedException('Email e senha são obrigatórios');
-      }
+      console.log('🔐 Login attempt:', loginDto.email);
 
-      const result = await this.authService.login(body.email, body.password);
+      const result = await this.authService.login(loginDto.email, loginDto.password);
       
       console.log('✅ User logged in:', result.user.email);
 

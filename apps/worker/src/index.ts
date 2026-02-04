@@ -149,36 +149,40 @@ poFollowupWorker.on('failed', (job, err) => {
 async function setupScheduledJobs() {
   console.log('⏰ Setting up scheduled jobs...');
 
+  const isDev = process.env.NODE_ENV !== 'production';
+  
   // Get all organizations
   const orgs = await prisma.organization.findMany({
     where: { status: 'active' },
   });
 
   for (const org of orgs) {
-    // Daily inventory check at 8 AM
+    // Inventory check
+    // DEV: every 60s for testing | PROD: daily at 8 AM
     await inventoryQueue.add(
       'daily-check',
       { orgId: org.id },
       {
-        repeat: {
-          pattern: '0 8 * * *', // Every day at 8 AM
-        },
+        repeat: isDev
+          ? { every: 60000 } // Every 60 seconds in DEV
+          : { pattern: '0 8 * * *' }, // Every day at 8 AM in PROD
       },
     );
 
-    // PO follow-up every 4 hours
+    // PO follow-up
+    // DEV: every 60s for testing | PROD: every 4 hours
     await poFollowupQueue.add(
       'followup',
       { orgId: org.id },
       {
-        repeat: {
-          pattern: '0 */4 * * *', // Every 4 hours
-        },
+        repeat: isDev
+          ? { every: 60000 } // Every 60 seconds in DEV
+          : { pattern: '0 */4 * * *' }, // Every 4 hours in PROD
       },
     );
   }
 
-  console.log(`✅ Scheduled jobs for ${orgs.length} organization(s)`);
+  console.log(`✅ Scheduled jobs for ${orgs.length} organization(s) [${isDev ? 'DEV MODE: 60s interval' : 'PROD MODE: cron schedule'}]`);
 }
 
 // Start
