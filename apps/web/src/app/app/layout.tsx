@@ -79,10 +79,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="w-64 border-r border-border flex flex-col">
         <div className="p-6 border-b border-border">
           <div className="flex items-center gap-2">
-            <Bot className="w-6 h-6 text-primary" />
-            <h1 className="text-xl font-bold">AAGC</h1>
+            <Bot className="w-6 h-6 text-blue-400" />
+            <h1 className="text-xl font-bold text-blue-400">AAGC</h1>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">Gestão Inteligente de Estoque</p>
+          <p className="text-sm text-gray-400 mt-1">Gestão Inteligente de Estoque</p>
         </div>
 
         <nav className="flex-1 p-4 space-y-1">
@@ -98,17 +98,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   transition-all duration-200 ease-in-out
                   ${
                     isActive
-                      ? 'bg-primary/10 text-primary shadow-sm border border-primary/20'
-                      : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground border border-transparent'
+                      ? 'bg-blue-500/10 text-blue-400 shadow-sm border border-blue-500/20'
+                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 border border-transparent'
                   }
                 `}
               >
                 <Icon 
                   className={`w-5 h-5 transition-colors duration-200 ${
-                    isActive ? 'text-primary' : 'text-muted-foreground'
+                    isActive ? 'text-blue-400 stroke-[2]' : 'text-gray-400'
                   }`} 
                 />
-                <span className={isActive ? 'font-semibold' : 'font-normal'}>
+                <span className={isActive ? 'font-semibold text-blue-400' : 'font-normal'}>
                   {item.name}
                 </span>
               </Link>
