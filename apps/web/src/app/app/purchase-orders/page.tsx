@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi, itemsApi } from '@/lib/api';
-import { CheckCircle, Send, Package, Plus, Bot, ShoppingCart, FileText, Download } from 'lucide-react';
+import { CheckCircle, Send, Package, Plus, Bot, ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
 
 const statusLabels: Record<string, string> = {
@@ -49,17 +49,6 @@ export default function PurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ['items'] });
     },
   });
-
-  // Generate PDF dynamically
-  const handleGeneratePDF = async (po: any) => {
-    try {
-      const { generatePurchaseOrderPDF } = await import('@/lib/pdf');
-      await generatePurchaseOrderPDF(po);
-    } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
-      alert('Erro ao gerar PDF. Tente novamente.');
-    }
-  };
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Carregando...</div>;
@@ -213,14 +202,6 @@ export default function PurchaseOrdersPage() {
                   </span>
                 )}
 
-                {/* PDF Export */}
-                <button
-                  onClick={() => handleGeneratePDF(po)}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
-                >
-                  <FileText className="w-4 h-4" />
-                  Exportar PDF
-                </button>
               </div>
 
               {po.observacoes && (

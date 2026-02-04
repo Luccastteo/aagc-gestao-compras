@@ -6,7 +6,7 @@ import { itemsApi } from '@/lib/api';
 import { 
   Plus, AlertCircle, CheckCircle, Bot, 
   Download, Upload, FileSpreadsheet, X,
-  FileDown, FileUp, CheckCircle2, FileText
+  FileDown, FileUp, CheckCircle2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -257,18 +257,6 @@ export default function InventoryPage() {
     importMutation.mutate(validItems);
   };
 
-  // Generate PDF dynamically
-  const handleGeneratePDF = async () => {
-    if (!items || items.length === 0) return;
-    
-    try {
-      const { generateInventoryReportPDF } = await import('@/lib/pdf');
-      await generateInventoryReportPDF(items);
-    } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
-      alert('Erro ao gerar PDF. Tente novamente.');
-    }
-  };
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Carregando...</div>;
@@ -312,15 +300,6 @@ export default function InventoryPage() {
           >
             <FileDown className="w-4 h-4" />
             Exportar Excel
-          </button>
-          
-          <button
-            onClick={handleGeneratePDF}
-            disabled={!items || items.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
-          >
-            <FileText className="w-4 h-4" />
-            Relatório PDF
           </button>
           
           <button
