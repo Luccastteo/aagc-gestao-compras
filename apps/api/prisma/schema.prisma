@@ -78,6 +78,7 @@ model Supplier {
   prazoMedioDias Int      @default(7)
   qualidade      String   @default("ok") // excelente, bom, ok, ruim
   status         String   @default("ativo")
+  isDefault      Boolean  @default(false) // Default supplier for org when item has no supplier
   observacoes    String?
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -90,6 +91,7 @@ model Supplier {
 
   @@unique([organizationId, codigo])
   @@index([organizationId])
+  @@index([organizationId, isDefault])
   @@map("suppliers")
 }
 
@@ -152,10 +154,16 @@ enum POStatus {
   CANCELLED
 }
 
+enum POSource {
+  MANUAL
+  AUTO_REPLENISH
+}
+
 model PurchaseOrder {
   id                String   @id @default(uuid())
   codigo            String
   status            POStatus @default(DRAFT)
+  source            POSource @default(MANUAL)
   supplierId        String
   supplier          Supplier @relation(fields: [supplierId], references: [id])
   valorTotal        Float    @default(0)
@@ -173,14 +181,23 @@ model PurchaseOrder {
   dataRecebimento   DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  
+  // Auto PO fields
+  dedupeKey         String?           // AUTO:{orgId}:{supplierId}:{windowStartISO}
+  windowStart       DateTime?         // Window boundary (6h blocks)
+  needsQuote        Boolean  @default(false)
+  lastAutoUpdateAt  DateTime?
 
   items       PurchaseOrderItem[]
   kanbanCards KanbanCard[]
   purchaseSuggestions PurchaseSuggestion[]
 
   @@unique([organizationId, codigo])
+  @@unique([organizationId, dedupeKey])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, status, source, createdAt])
+  @@index([organizationId, supplierId, status])
   @@map("purchase_orders")
 }
 
@@ -193,7 +210,9 @@ model PurchaseOrderItem {
   quantidade      Int
   precoUnitario   Float
   valorTotal      Float
+  needsQuote      Boolean       @default(false)
 
+  @@unique([purchaseOrderId, itemId])
   @@index([purchaseOrderId])
   @@map("purchase_order_items")
 }
@@ -229,6 +248,7 @@ model KanbanCard {
   posicao         Int           @default(0)
   purchaseOrderId String?
   purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  externalRef     String?       // Reference for AUTO POs (poId) - unique per org
   boardId         String
   board           KanbanBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)
   createdById     String
@@ -238,6 +258,7 @@ model KanbanCard {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  @@unique([organizationId, externalRef])
   @@index([organizationId])
   @@index([boardId, status])
   @@map("kanban_cards")
@@ -249,7 +270,7 @@ model AuditLog {
   id             String   @id @default(uuid())
   actorUserId    String?
   actorUser      User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
-  action         String   // CREATE, UPDATE, DELETE, APPROVE, SEND, RECEIVE
+  action         String   // CREATE, UPDATE, DELETE, APPROVE, SEND, RECEIVE, AUTO_PO_*
   entity         String   // Item, PurchaseOrder, KanbanCard, etc
   entityId       String
   before         String?  @db.Text // JSON
@@ -261,6 +282,8 @@ model AuditLog {
   @@index([organizationId])
   @@index([organizationId, entity])
   @@index([organizationId, actorUserId])
+  @@index([organizationId, action])
+  @@index([organizationId, entityId])
   @@map("audit_logs")
 }
 

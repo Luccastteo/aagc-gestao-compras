@@ -317,7 +317,8 @@ pnpm build            # Build all apps
 pnpm desktop:build    # Build desktop (Windows)
 
 # Testes
-pnpm -C apps/api test # Testes E2E de isolamento
+pnpm -C apps/api test      # Testes E2E de isolamento multi-tenant
+pnpm -C apps/worker test   # Testes do Auto PO
 
 # Limpeza
 pnpm clean            # Remove node_modules + dist
@@ -462,8 +463,45 @@ ORDER BY tablename, indexname;
 |-----|-----------|-----------|
 | `inventory_daily_check` | 60s (DEV) / 24h (PROD) | Detecta itens críticos, cria alertas/sugestões |
 | `po_followup` | 60s (DEV) / 24h (PROD) | Follow-up POs SENT > 24h |
+| `auto_po_generation` | 60s (DEV) / 6h (PROD) | **NOVO!** Gera POs AUTO DRAFT automaticamente |
 
-**Logs**: `/app/audit` → filtrar por `JOB_INVENTORY_DAILY_CHECK` ou `JOB_PO_FOLLOWUP`
+**Logs**: `/app/audit` → filtrar por `JOB_INVENTORY_DAILY_CHECK`, `JOB_PO_FOLLOWUP` ou `AUTO_PO_*`
+
+### 🆕 Auto PO Generation (Geração Automática de Pedidos)
+
+O sistema agora gera **automaticamente** pedidos de compra em modo DRAFT quando detecta itens críticos.
+
+**Características**:
+- **Agressivo**: Executa a cada 60s em DEV, 6h em PROD
+- **Determinístico**: Mesma entrada = mesma saída
+- **Idempotente**: Não duplica POs na mesma janela de tempo
+- **Seguro**: Apenas cria DRAFT, nunca aprova automaticamente
+
+**Regras de resolução de fornecedor**:
+1. Fornecedor preferencial do item (`item.supplierId`)
+2. Fornecedor padrão da org (`supplier.isDefault = true`)
+3. Histórico de POs anteriores para o SKU
+4. Item ignorado se sem fornecedor
+
+**Como validar**:
+1. Certifique-se de ter itens com `saldo <= minimo`
+2. Aguarde a execução do job (60s em DEV)
+3. Vá em `/app/purchase-orders` → veja POs com badge **AUTO**
+4. Consulte audit logs por `AUTO_PO_CREATED`, `AUTO_PO_UPDATED`
+
+**Configuração** (apps/worker/.env):
+```env
+AUTO_PO_ENABLED=true          # Habilitar/desabilitar
+AUTO_PO_WINDOW_HOURS=6        # Janela de dedupe
+AUTO_PO_DEV_INTERVAL_SEC=60   # Intervalo em DEV
+```
+
+**Documentação completa**: Veja [AUTO-PO-GUIDE.md](./AUTO-PO-GUIDE.md)
+
+**Testar job**:
+```bash
+pnpm -C apps/worker test:auto-po
+```
 
 ### Configurar SMTP/WhatsApp (Produção)
 
@@ -501,6 +539,11 @@ TWILIO_SMS_FROM=+1234567890
 - [ ] Senha fraca (<10 chars) é rejeitada
 - [ ] Rate limit bloqueia após threshold (429)
 - [ ] Usuário de org B NÃO acessa dados de org A
+- [ ] **AUTO PO**: POs AUTO DRAFT são criadas automaticamente para itens críticos
+- [ ] **AUTO PO**: Badge "AUTO" aparece em POs automáticas na UI
+- [ ] **AUTO PO**: Audit logs registram `AUTO_PO_CREATED`/`AUTO_PO_UPDATED`
+- [ ] **AUTO PO**: Idempotência: executar job 2x não duplica POs
+- [ ] **AUTO PO**: Testes passam: `pnpm -C apps/worker test:auto-po`
 
 ---
 

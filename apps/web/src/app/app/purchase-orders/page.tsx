@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi, itemsApi } from '@/lib/api';
-import { CheckCircle, Send, Package, Plus, Bot, ShoppingCart } from 'lucide-react';
+import { CheckCircle, Send, Package, Plus, Bot, ShoppingCart, Filter, AlertTriangle, Zap } from 'lucide-react';
 import { useState } from 'react';
 
 const statusLabels: Record<string, string> = {
@@ -13,17 +13,31 @@ const statusLabels: Record<string, string> = {
   CANCELLED: 'Cancelado',
 };
 
+const sourceLabels: Record<string, string> = {
+  MANUAL: 'Manual',
+  AUTO_REPLENISH: 'Automático',
+};
+
 export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [showCreateFromAnalysis, setShowCreateFromAnalysis] = useState(false);
+  const [filterSource, setFilterSource] = useState<string>('ALL');
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [showNeedsQuoteOnly, setShowNeedsQuoteOnly] = useState(false);
 
   const { data: purchaseOrdersResponse, isLoading } = useQuery({
     queryKey: ['purchase-orders'],
     queryFn: purchaseOrdersApi.getAll,
   });
 
-  // Extrair array de dados da resposta paginada
-  const purchaseOrders = purchaseOrdersResponse?.data || [];
+  // Extrair array de dados da resposta paginada e aplicar filtros
+  const allPurchaseOrders = purchaseOrdersResponse?.data || [];
+  const purchaseOrders = allPurchaseOrders.filter((po: any) => {
+    if (filterSource !== 'ALL' && po.source !== filterSource) return false;
+    if (filterStatus !== 'ALL' && po.status !== filterStatus) return false;
+    if (showNeedsQuoteOnly && !po.needsQuote) return false;
+    return true;
+  });
 
   const { data: analysis } = useQuery({
     queryKey: ['items', 'analyze'],
@@ -85,6 +99,60 @@ export default function PurchaseOrdersPage() {
         </button>
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4 items-center p-4 bg-secondary/50 rounded-lg">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Filtros:</span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground">Origem:</label>
+          <select
+            value={filterSource}
+            onChange={(e) => setFilterSource(e.target.value)}
+            className="px-3 py-1.5 bg-background border border-border rounded-md text-sm"
+          >
+            <option value="ALL">Todos</option>
+            <option value="MANUAL">Manual</option>
+            <option value="AUTO_REPLENISH">Automático</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground">Status:</label>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-3 py-1.5 bg-background border border-border rounded-md text-sm"
+          >
+            <option value="ALL">Todos</option>
+            <option value="DRAFT">Rascunho</option>
+            <option value="APPROVED">Aprovado</option>
+            <option value="SENT">Enviado</option>
+            <option value="DELIVERED">Entregue</option>
+            <option value="CANCELLED">Cancelado</option>
+          </select>
+        </div>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showNeedsQuoteOnly}
+            onChange={(e) => setShowNeedsQuoteOnly(e.target.checked)}
+            className="w-4 h-4 rounded border-border"
+          />
+          <span className="text-sm text-muted-foreground flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3 text-yellow-500" />
+            Apenas com cotação pendente
+          </span>
+        </label>
+
+        <div className="ml-auto text-sm text-muted-foreground">
+          {purchaseOrders.length} de {allPurchaseOrders.length} pedidos
+        </div>
+      </div>
+
       {/* Agent Suggestions */}
       {showCreateFromAnalysis && analysis?.suggestions && analysis.suggestions.length > 0 && (
         <div className="p-6 bg-primary/10 border border-primary/30 rounded-lg">
@@ -132,16 +200,37 @@ export default function PurchaseOrdersPage() {
           </div>
         ) : (
           purchaseOrders.map((po: any) => (
-            <div key={po.id} className="p-6 bg-card border border-border rounded-lg">
+            <div key={po.id} className={`p-6 bg-card border rounded-lg ${po.source === 'AUTO_REPLENISH' ? 'border-primary/50' : 'border-border'}`}>
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold">{po.codigo}</h3>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-lg font-semibold">{po.codigo}</h3>
+                    {/* Source Badge */}
+                    {po.source === 'AUTO_REPLENISH' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/20 text-primary text-xs rounded-full font-medium">
+                        <Zap className="w-3 h-3" />
+                        AUTO
+                      </span>
+                    )}
+                    {/* Needs Quote Badge */}
+                    {po.needsQuote && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-medium">
+                        <AlertTriangle className="w-3 h-3" />
+                        COTAÇÃO
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     Fornecedor: {po.supplier.nome}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Criado por: {po.createdBy.name}
                   </p>
+                  {po.dedupeKey && (
+                    <p className="text-xs text-muted-foreground/60 mt-1 font-mono">
+                      Janela: {po.windowStart ? new Date(po.windowStart).toLocaleString('pt-BR') : 'N/A'}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-2xl font-bold">R$ {po.valorTotal.toFixed(2)}</p>
@@ -158,25 +247,40 @@ export default function PurchaseOrdersPage() {
                   >
                     {statusLabels[po.status] || po.status}
                   </span>
+                  {po.lastAutoUpdateAt && (
+                    <p className="text-xs text-muted-foreground/60 mt-1">
+                      Última atualização auto: {new Date(po.lastAutoUpdateAt).toLocaleString('pt-BR')}
+                    </p>
+                  )}
                 </div>
               </div>
 
               {/* Items */}
               <div className="mb-4">
-                <h4 className="font-medium mb-2">Itens do Pedido:</h4>
+                <h4 className="font-medium mb-2">Itens do Pedido ({po.items.length}):</h4>
                 <div className="space-y-2">
                   {po.items.map((poItem: any) => (
                     <div
                       key={poItem.id}
-                      className="flex justify-between p-3 bg-secondary rounded-md text-sm"
+                      className={`flex justify-between p-3 rounded-md text-sm ${poItem.needsQuote ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-secondary'}`}
                     >
                       <div>
-                        <p className="font-medium">{poItem.item.sku}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{poItem.item.sku}</p>
+                          {poItem.needsQuote && (
+                            <span className="text-xs text-yellow-400 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              Sem preço
+                            </span>
+                          )}
+                        </div>
                         <p className="text-muted-foreground">{poItem.item.descricao}</p>
                       </div>
                       <div className="text-right">
                         <p>Qtd: {poItem.quantidade}</p>
-                        <p>R$ {poItem.valorTotal.toFixed(2)}</p>
+                        <p className={poItem.needsQuote ? 'text-yellow-400' : ''}>
+                          {poItem.needsQuote ? 'A cotar' : `R$ ${poItem.valorTotal.toFixed(2)}`}
+                        </p>
                       </div>
                     </div>
                   ))}

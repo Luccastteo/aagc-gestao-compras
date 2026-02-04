@@ -90,6 +90,7 @@ async function main() {
       prazoMedioDias: 5,
       qualidade: 'excelente',
       status: 'ativo',
+      isDefault: true, // Default supplier for org
     },
     create: {
       codigo: 'FORN-001',
@@ -101,6 +102,7 @@ async function main() {
       prazoMedioDias: 5,
       qualidade: 'excelente',
       status: 'ativo',
+      isDefault: true, // Default supplier for org
       organizationId: org.id,
     },
   });
@@ -121,6 +123,7 @@ async function main() {
       prazoMedioDias: 7,
       qualidade: 'bom',
       status: 'ativo',
+      isDefault: false,
     },
     create: {
       codigo: 'FORN-002',
@@ -132,11 +135,12 @@ async function main() {
       prazoMedioDias: 7,
       qualidade: 'bom',
       status: 'ativo',
+      isDefault: false,
       organizationId: org.id,
     },
   });
 
-  console.log('✅ Suppliers created:', supplier1.nome, supplier2.nome);
+  console.log('✅ Suppliers created:', supplier1.nome, '(default)', supplier2.nome);
 
   // Create items
   const items = [
@@ -208,6 +212,36 @@ async function main() {
       custoUnitario: 180.0,
       supplierId: supplier1.id,
       localizacao: 'Prateleira D1',
+      organizationId: org.id,
+    },
+    // Item sem fornecedor preferencial (usará o default da org)
+    {
+      sku: 'CORREIA-V001',
+      descricao: 'Correia em V A68',
+      categoria: 'Correias',
+      unidade: 'UN',
+      saldo: 1,
+      minimo: 3,
+      maximo: 15,
+      leadTimeDays: 5,
+      custoUnitario: 35.0,
+      supplierId: null as any, // No preferred supplier - will use org default
+      localizacao: 'Prateleira E2',
+      organizationId: org.id,
+    },
+    // Item crítico sem preço (needsQuote = true)
+    {
+      sku: 'VALVULA-HIDRA-001',
+      descricao: 'Válvula Hidráulica Solenoide 24V',
+      categoria: 'Hidráulica',
+      unidade: 'UN',
+      saldo: 0,
+      minimo: 1,
+      maximo: 5,
+      leadTimeDays: 14,
+      custoUnitario: 0, // Sem preço cadastrado
+      supplierId: supplier2.id,
+      localizacao: 'Prateleira F1',
       organizationId: org.id,
     },
   ];
