@@ -1,12 +1,16 @@
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+// Dynamic import for client-side only
+let jsPDF: any = null;
 
-// Extend jsPDF type for autoTable
-declare module 'jspdf' {
-  interface jsPDF {
-    autoTable: (options: any) => jsPDF;
-  }
-}
+// Load jsPDF dynamically
+const loadJsPDF = async () => {
+  if (typeof window === 'undefined') return null;
+  if (jsPDF) return jsPDF;
+  
+  const module = await import('jspdf');
+  await import('jspdf-autotable');
+  jsPDF = module.default;
+  return jsPDF;
+};
 
 interface PurchaseOrderItem {
   item: {
@@ -45,8 +49,11 @@ const statusLabels: Record<string, string> = {
   CANCELLED: 'Cancelado',
 };
 
-export function generatePurchaseOrderPDF(po: PurchaseOrder) {
-  const doc = new jsPDF();
+export async function generatePurchaseOrderPDF(po: PurchaseOrder) {
+  const PDF = await loadJsPDF();
+  if (!PDF) return;
+  
+  const doc = new PDF();
   
   // Header
   doc.setFillColor(139, 92, 246); // Purple
@@ -189,8 +196,11 @@ export function generatePurchaseOrderPDF(po: PurchaseOrder) {
   doc.save(`pedido_${po.codigo}.pdf`);
 }
 
-export function generateInventoryReportPDF(items: any[]) {
-  const doc = new jsPDF();
+export async function generateInventoryReportPDF(items: any[]) {
+  const PDF = await loadJsPDF();
+  if (!PDF) return;
+  
+  const doc = new PDF();
   
   // Header
   doc.setFillColor(34, 197, 94); // Green
@@ -278,8 +288,11 @@ export function generateInventoryReportPDF(items: any[]) {
   doc.save(`estoque_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function generateAuditReportPDF(logs: any[]) {
-  const doc = new jsPDF();
+export async function generateAuditReportPDF(logs: any[]) {
+  const PDF = await loadJsPDF();
+  if (!PDF) return;
+  
+  const doc = new PDF();
   
   // Header
   doc.setFillColor(59, 130, 246); // Blue

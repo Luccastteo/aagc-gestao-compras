@@ -205,7 +205,7 @@ export default function PurchaseOrdersPage() {
 
                 {/* PDF Export */}
                 <button
-                  onClick={() => generatePurchaseOrderPDF(po)}
+                  onClick={async () => await generatePurchaseOrderPDF(po)}
                   className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
                 >
                   <FileText className="w-4 h-4" />
