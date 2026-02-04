@@ -270,7 +270,7 @@ export class ItemsService {
 
     for (const row of items) {
       try {
-        // Validate required fields
+        // Validate required fields - verifica se existem e não são vazios
         if (!row.SKU || !row.Descricao) {
           results.errors.push({
             row,
@@ -281,23 +281,39 @@ export class ItemsService {
 
         const sku = String(row.SKU).trim();
         const descricao = String(row.Descricao).trim();
+        
+        // Valida se após trim() ainda têm conteúdo
+        if (sku === '' || descricao === '' || sku === 'undefined' || descricao === 'undefined' || sku === 'null' || descricao === 'null') {
+          results.errors.push({
+            row,
+            error: 'SKU e Descrição não podem ser vazios',
+          });
+          continue;
+        }
 
         // Check if item exists
         const existing = await this.prisma.item.findFirst({
           where: { sku, organizationId },
         });
 
+        // Função helper para converter números de forma segura
+        const safeNumber = (value: any, defaultValue: number): number => {
+          if (value === null || value === undefined || value === '') return defaultValue;
+          const num = Number(value);
+          return isNaN(num) || !isFinite(num) ? defaultValue : num;
+        };
+
         const itemData = {
           sku,
           descricao,
-          categoria: row.Categoria ? String(row.Categoria).trim() : null,
-          unidade: row.Unidade ? String(row.Unidade).trim() : 'UN',
-          saldo: Number(row.Estoque_Atual) || 0,
-          minimo: Number(row.Estoque_Minimo) || 0,
-          maximo: Number(row.Estoque_Maximo) || 100,
-          custoUnitario: Number(row.Custo_Unitario) || 0,
-          leadTimeDays: Number(row.Lead_Time_Dias) || 7,
-          localizacao: row.Localizacao ? String(row.Localizacao).trim() : null,
+          categoria: row.Categoria && String(row.Categoria).trim() !== '' ? String(row.Categoria).trim() : null,
+          unidade: row.Unidade && String(row.Unidade).trim() !== '' ? String(row.Unidade).trim() : 'UN',
+          saldo: safeNumber(row.Estoque_Atual, 0),
+          minimo: safeNumber(row.Estoque_Minimo, 0),
+          maximo: safeNumber(row.Estoque_Maximo, 100),
+          custoUnitario: safeNumber(row.Custo_Unitario, 0),
+          leadTimeDays: safeNumber(row.Lead_Time_Dias, 7),
+          localizacao: row.Localizacao && String(row.Localizacao).trim() !== '' ? String(row.Localizacao).trim() : null,
         };
 
         if (existing) {

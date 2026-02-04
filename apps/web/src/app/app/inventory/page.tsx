@@ -199,6 +199,27 @@ export default function InventoryPage() {
     });
   };
 
+  // Função para verificar se uma linha está vazia
+  const isRowEmpty = (row: any): boolean => {
+    if (!row || typeof row !== 'object') return true;
+    
+    // Verifica se todos os valores estão vazios ou são apenas espaços
+    const values = Object.values(row);
+    return values.every(val => {
+      if (val === null || val === undefined) return true;
+      const strVal = String(val).trim();
+      return strVal === '' || strVal === 'undefined' || strVal === 'null';
+    });
+  };
+
+  // Função para limpar valores
+  const cleanValue = (val: any): any => {
+    if (val === null || val === undefined) return null;
+    const str = String(val).trim();
+    if (str === '' || str === 'undefined' || str === 'null') return null;
+    return str;
+  };
+
   // Handle file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -208,10 +229,15 @@ export default function InventoryPage() {
     reader.onload = (event) => {
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = XLSX.read(data, { type: 'array', defval: '' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        
+        // Remove linhas vazias durante a leitura
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+          defval: '',
+          blankrows: false  // Remove linhas completamente vazias
+        });
         
         if (jsonData.length === 0) {
           alert('A planilha está vazia ou não possui dados válidos.');
@@ -219,18 +245,39 @@ export default function InventoryPage() {
         }
         
         // Normaliza os nomes das colunas
-        const normalizedData = normalizeColumnNames(jsonData);
+        let normalizedData = normalizeColumnNames(jsonData);
         
-        // Verifica se tem SKU e Descrição
-        const firstRow = normalizedData[0];
-        if (!firstRow.SKU && !firstRow.Descricao) {
+        // Remove linhas que estão completamente vazias após normalização
+        normalizedData = normalizedData.filter(row => !isRowEmpty(row));
+        
+        // Limpa os valores de cada linha
+        normalizedData = normalizedData.map(row => {
+          const cleanedRow: any = {};
+          for (const key of Object.keys(row)) {
+            const cleanedValue = cleanValue(row[key]);
+            if (cleanedValue !== null) {
+              cleanedRow[key] = cleanedValue;
+            }
+          }
+          return cleanedRow;
+        });
+        
+        // Remove linhas que não têm SKU E Descrição válidos
+        normalizedData = normalizedData.filter(row => {
+          const hasSKU = row.SKU && String(row.SKU).trim() !== '';
+          const hasDesc = row.Descricao && String(row.Descricao).trim() !== '';
+          return hasSKU && hasDesc;
+        });
+        
+        if (normalizedData.length === 0) {
           const columns = Object.keys(jsonData[0] || {}).join(', ');
-          alert(`Colunas encontradas: ${columns}\n\nA planilha deve ter pelo menos as colunas SKU (ou Codigo) e Descricao (ou Nome/Produto).`);
+          alert(`Nenhum dado válido encontrado!\n\nColunas encontradas: ${columns}\n\nA planilha deve ter pelo menos as colunas SKU (ou Codigo) e Descricao (ou Nome/Produto) com valores preenchidos.`);
           return;
         }
         
         setImportData(normalizedData);
         setImportResult(null);
+        setImportError(null);
         setShowImportModal(true);
       } catch (error) {
         console.error('Parse error:', error);
@@ -247,12 +294,18 @@ export default function InventoryPage() {
 
   // Execute import
   const handleImport = () => {
-    // Filtra apenas itens válidos
-    const validItems = importData.filter(row => row.SKU && row.Descricao);
+    // Filtra apenas itens válidos (com SKU E Descrição não vazios)
+    const validItems = importData.filter(row => {
+      const sku = row.SKU ? String(row.SKU).trim() : '';
+      const desc = row.Descricao ? String(row.Descricao).trim() : '';
+      return sku !== '' && desc !== '' && sku !== 'undefined' && desc !== 'undefined';
+    });
+    
     if (validItems.length === 0) {
-      setImportError('Nenhum item válido para importar. Verifique se todos os itens têm SKU e Descrição.');
+      setImportError('Nenhum item válido para importar. Verifique se todos os itens têm SKU e Descrição preenchidos.');
       return;
     }
+    
     setImportError(null);
     importMutation.mutate(validItems);
   };
