@@ -13,7 +13,9 @@ import {
   LogOut,
   Bot,
   Bell,
+  Settings,
 } from 'lucide-react';
+import { authApi } from '@/lib/api';
 
 const roleLabels: Record<string, string> = {
   OWNER: 'Proprietário',
@@ -39,9 +41,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setUser(JSON.parse(userData));
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('userId');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch (err) {
+      // Even if API fails, clear tokens
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('user');
+    }
     router.push('/login');
   };
 
@@ -61,6 +70,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { name: 'Kanban', href: '/app/kanban', icon: Kanban },
     { name: 'Integrações', href: '/app/integrations', icon: Bell },
     { name: 'Auditoria', href: '/app/audit', icon: FileText },
+    { name: 'Configurações', href: '/app/settings', icon: Settings },
   ];
 
   return (

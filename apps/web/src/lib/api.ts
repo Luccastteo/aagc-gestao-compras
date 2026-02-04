@@ -9,10 +9,31 @@ export const api = axios.create({
   },
 });
 
-// Add auth interceptor
+// Flag to prevent multiple refresh attempts
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (token: string) => void; reject: (error: any) => void }> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token!);
+    }
+  });
+  failedQueue = [];
+};
+
+// Add auth interceptor - use JWT token or fallback to userId
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
+    const accessToken = localStorage.getItem('accessToken');
     const userId = localStorage.getItem('userId');
+    
+    if (accessToken) {
+      config.headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+    // Fallback for backward compatibility
     if (userId) {
       config.headers['x-user-id'] = userId;
     }
@@ -20,24 +41,111 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for errors
+// Response interceptor for token refresh
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('userId');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // If 401 and we haven't tried to refresh yet
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // Wait for the refresh to complete
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
+          originalRequest.headers['Authorization'] = `Bearer ${token}`;
+          return api(originalRequest);
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+
+      if (refreshToken) {
+        try {
+          const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+          
+          if (data.accessToken) {
+            localStorage.setItem('accessToken', data.accessToken);
+            api.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
+            originalRequest.headers['Authorization'] = `Bearer ${data.accessToken}`;
+            
+            processQueue(null, data.accessToken);
+            return api(originalRequest);
+          }
+        } catch (refreshError) {
+          processQueue(refreshError, null);
+          // Clear all tokens and redirect to login
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+          }
+          return Promise.reject(refreshError);
+        } finally {
+          isRefreshing = false;
+        }
+      } else {
+        // No refresh token, redirect to login
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('userId');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+        }
       }
     }
+    
     return Promise.reject(error);
   },
 );
 
 export const authApi = {
   login: async (email: string, password: string) => {
-    const { data } = await api.post('/simple-login', { email, password });
+    const { data } = await api.post('/auth/login', { email, password });
+    return data;
+  },
+  
+  refresh: async (refreshToken: string) => {
+    const { data } = await api.post('/auth/refresh', { refreshToken });
+    return data;
+  },
+  
+  forgotPassword: async (email: string) => {
+    const { data } = await api.post('/auth/forgot-password', { email });
+    return data;
+  },
+  
+  resetPassword: async (token: string, newPassword: string) => {
+    const { data } = await api.post('/auth/reset-password', { token, newPassword });
+    return data;
+  },
+  
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const { data } = await api.post('/auth/change-password', { currentPassword, newPassword });
+    return data;
+  },
+  
+  logout: async () => {
+    const { data } = await api.post('/auth/logout');
+    // Clear local storage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('user');
+    }
+    return data;
+  },
+  
+  getSession: async () => {
+    const { data } = await api.get('/auth/session');
     return data;
   },
 };
