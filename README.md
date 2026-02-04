@@ -160,6 +160,14 @@ aagc-saas/
 - **Follow-up de pedidos**: Lembra sobre pedidos pendentes > 24h
 - **Agendado**: Baseado em cron (8h diariamente, a cada 4h)
 
+### 📝 Nota sobre Relatórios PDF
+> ⚠️ **A funcionalidade de geração de PDFs (pedidos e estoque) foi temporariamente removida** devido a conflitos de dependências com o jsPDF durante o build do Next.js. Esta funcionalidade será reimplementada no backend (API) em breve, permitindo geração de PDFs de forma mais robusta e segura.
+>
+> **Funcionalidades mantidas**:
+> - ✅ Exportação de dados em Excel (formato XLSX)
+> - ✅ Importação de dados via Excel
+> - ✅ Todas as funcionalidades de gestão de compras e estoque
+
 ---
 
 ## 🔧 Desenvolvimento
