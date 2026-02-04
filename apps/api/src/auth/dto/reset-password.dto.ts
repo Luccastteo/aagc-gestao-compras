@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, MinLength } from 'class-validator';
+import { IsString, IsNotEmpty } from 'class-validator';
+import { IsStrongPassword } from '../../common/validators/strong-password.validator';
 
 export class ResetPasswordDto {
   @IsString()
@@ -6,6 +7,6 @@ export class ResetPasswordDto {
   token: string;
 
   @IsString()
-  @MinLength(6, { message: 'Nova senha deve ter no mínimo 6 caracteres' })
+  @IsStrongPassword()
   newPassword: string;
 }

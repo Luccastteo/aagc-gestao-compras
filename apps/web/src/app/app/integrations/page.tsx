@@ -302,11 +302,12 @@ export default function IntegrationsPage() {
             
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium flex items-center gap-2">
+                <label htmlFor="test-email" className="text-sm font-medium flex items-center gap-2">
                   <Mail className="w-4 h-4 text-blue-500" />
                   E-mail
                 </label>
                 <input
+                  id="test-email"
                   type="email"
                   value={testForm.email}
                   onChange={(e) => setTestForm({ ...testForm, email: e.target.value })}
@@ -316,11 +317,12 @@ export default function IntegrationsPage() {
               </div>
               
               <div>
-                <label className="text-sm font-medium flex items-center gap-2">
+                <label htmlFor="test-whatsapp" className="text-sm font-medium flex items-center gap-2">
                   <MessageCircle className="w-4 h-4 text-green-500" />
                   WhatsApp
                 </label>
                 <input
+                  id="test-whatsapp"
                   type="text"
                   value={testForm.whatsapp}
                   onChange={(e) => setTestForm({ ...testForm, whatsapp: e.target.value })}
@@ -330,11 +332,12 @@ export default function IntegrationsPage() {
               </div>
               
               <div>
-                <label className="text-sm font-medium flex items-center gap-2">
+                <label htmlFor="test-sms" className="text-sm font-medium flex items-center gap-2">
                   <Phone className="w-4 h-4 text-purple-500" />
                   SMS
                 </label>
                 <input
+                  id="test-sms"
                   type="text"
                   value={testForm.sms}
                   onChange={(e) => setTestForm({ ...testForm, sms: e.target.value })}

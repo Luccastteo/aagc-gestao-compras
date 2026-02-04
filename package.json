@@ -7,14 +7,18 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=!appsdesktop",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "db:migrate": "cd apps/api && pnpm prisma migrate dev",
+    "db:migrate": "pnpm -C apps/api prisma migrate deploy",
+    "db:migrate:dev": "pnpm -C apps/api prisma migrate dev --skip-generate",
+    "db:generate": "cd apps/api && pnpm prisma generate",
     "db:seed": "cd apps/api && pnpm prisma db seed",
     "db:studio": "cd apps/api && pnpm prisma studio",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
+    "desktop:dev": "pnpm -C apps/desktop tauri dev",
+    "desktop:build": "pnpm -C apps/desktop tauri build",
     "start": "turbo run start"
   },
   "devDependencies": {

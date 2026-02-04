@@ -28,6 +28,8 @@ model Organization {
   kanbanCards    KanbanCard[]
   auditLogs      AuditLog[]
   commsLogs      CommsLog[]
+  inventoryAlerts     InventoryAlert[]
+  purchaseSuggestions PurchaseSuggestion[]
 
   @@map("organizations")
 }
@@ -84,6 +86,7 @@ model Supplier {
 
   items          Item[]
   purchaseOrders PurchaseOrder[]
+  purchaseSuggestions PurchaseSuggestion[]
 
   @@unique([organizationId, codigo])
   @@index([organizationId])
@@ -114,6 +117,8 @@ model Item {
 
   purchaseOrderItems PurchaseOrderItem[]
   movements          Movement[]
+  inventoryAlerts    InventoryAlert[]
+  purchaseSuggestions PurchaseSuggestion[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -171,6 +176,7 @@ model PurchaseOrder {
 
   items       PurchaseOrderItem[]
   kanbanCards KanbanCard[]
+  purchaseSuggestions PurchaseSuggestion[]
 
   @@unique([organizationId, codigo])
   @@index([organizationId])
@@ -241,8 +247,8 @@ model KanbanCard {
 
 model AuditLog {
   id             String   @id @default(uuid())
-  actorUserId    String
-  actorUser      User     @relation(fields: [actorUserId], references: [id])
+  actorUserId    String?
+  actorUser      User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
   action         String   // CREATE, UPDATE, DELETE, APPROVE, SEND, RECEIVE
   entity         String   // Item, PurchaseOrder, KanbanCard, etc
   entityId       String
@@ -265,10 +271,80 @@ model CommsLog {
   assunto        String?
   mensagem       String   @db.Text
   status         String   // SENT, FAILED, SIMULATED
+  entity         String?
+  entityId       String?
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
 
   @@index([organizationId])
+  @@index([organizationId, entity, entityId])
   @@map("comms_logs")
+}
+
+// ==================== ALERTS & SUGGESTIONS ====================
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AlertStatus {
+  OPEN
+  ACK
+  CLOSED
+}
+
+model InventoryAlert {
+  id             String        @id @default(uuid())
+  severity       AlertSeverity @default(MEDIUM)
+  status         AlertStatus   @default(OPEN)
+  reason         String
+  itemId         String
+  item           Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  snapshot       String?       @db.Text // JSON (estado do item no momento)
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@unique([organizationId, itemId, status])
+  @@map("inventory_alerts")
+}
+
+enum SuggestionStatus {
+  OPEN
+  USED
+  IGNORED
+}
+
+model PurchaseSuggestion {
+  id             String           @id @default(uuid())
+  status         SuggestionStatus @default(OPEN)
+  itemId         String
+  item           Item             @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  supplierId     String?
+  supplier       Supplier?        @relation(fields: [supplierId], references: [id])
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  suggestedQty   Int
+  unitCost       Float
+  estimatedTotal Float
+  reason         String
+  snapshot       String?          @db.Text // JSON (estado do item no momento)
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, purchaseOrderId])
+  @@unique([organizationId, itemId, status])
+  @@map("purchase_suggestions")
 }

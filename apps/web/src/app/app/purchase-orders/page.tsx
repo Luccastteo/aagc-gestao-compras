@@ -17,15 +17,27 @@ export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [showCreateFromAnalysis, setShowCreateFromAnalysis] = useState(false);
 
-  const { data: purchaseOrders, isLoading } = useQuery({
+  const { data: purchaseOrdersResponse, isLoading } = useQuery({
     queryKey: ['purchase-orders'],
     queryFn: purchaseOrdersApi.getAll,
   });
+
+  // Extrair array de dados da resposta paginada
+  const purchaseOrders = purchaseOrdersResponse?.data || [];
 
   const { data: analysis } = useQuery({
     queryKey: ['items', 'analyze'],
     queryFn: itemsApi.analyze,
     enabled: showCreateFromAnalysis,
+  });
+
+  const createFromSuggestionsMutation = useMutation({
+    mutationFn: () => purchaseOrdersApi.createFromSuggestions({}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      // Re-analisar para refletir status USED no backend
+      queryClient.invalidateQueries({ queryKey: ['items', 'analyze'] });
+    },
   });
 
   const approveMutation = useMutation({
@@ -84,6 +96,16 @@ export default function PurchaseOrdersPage() {
             O agente identificou {analysis.itemsCriticos} itens críticos que precisam de reposição.
             Valor total estimado: R$ {analysis.valorTotalEstimado?.toFixed(2)}
           </p>
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={() => createFromSuggestionsMutation.mutate()}
+              disabled={createFromSuggestionsMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+            >
+              <Plus className="w-4 h-4" />
+              {createFromSuggestionsMutation.isPending ? 'Gerando...' : 'Gerar Pedido(s) (rascunho)'}
+            </button>
+          </div>
           <div className="space-y-2">
             {analysis.suggestions.slice(0, 5).map((sug: any) => (
               <div key={sug.itemId} className="flex justify-between items-center p-3 bg-card rounded-md">
@@ -103,13 +125,13 @@ export default function PurchaseOrdersPage() {
 
       {/* Purchase Orders List */}
       <div className="space-y-4">
-        {purchaseOrders?.length === 0 ? (
+        {purchaseOrders.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <ShoppingCart className="w-12 h-12 mx-auto mb-4 opacity-50" />
             <p>Nenhum pedido de compra encontrado</p>
           </div>
         ) : (
-          purchaseOrders?.map((po: any) => (
+          purchaseOrders.map((po: any) => (
             <div key={po.id} className="p-6 bg-card border border-border rounded-lg">
               <div className="flex justify-between items-start mb-4">
                 <div>

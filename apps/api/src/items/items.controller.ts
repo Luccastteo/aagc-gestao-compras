@@ -1,16 +1,18 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { ItemsService } from './items.service';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import { CreateItemDto, ImportItemsDto, MovimentarEstoqueDto, UpdateItemDto } from './dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('items')
 export class ItemsController {
   constructor(private itemsService: ItemsService) {}
 
   @Get()
-  async findAll(@CurrentUser() user: CurrentUserData) {
-    return this.itemsService.findAll(user.organizationId);
+  async findAll(@CurrentUser() user: CurrentUserData, @Query() pagination: PaginationDto) {
+    return this.itemsService.findAll(user.organizationId, pagination);
   }
 
   @Get('critical')
@@ -21,7 +23,7 @@ export class ItemsController {
   @Get('analyze')
   @Roles(Role.MANAGER, Role.OWNER)
   async analyze(@CurrentUser() user: CurrentUserData) {
-    return this.itemsService.analyze(user.organizationId);
+    return this.itemsService.analyze(user.organizationId, user.userId);
   }
 
   @Get('export')
@@ -42,13 +44,13 @@ export class ItemsController {
 
   @Post()
   @Roles(Role.MANAGER, Role.OPERATOR, Role.OWNER)
-  async create(@Body() data: any, @CurrentUser() user: CurrentUserData) {
+  async create(@Body() data: CreateItemDto, @CurrentUser() user: CurrentUserData) {
     return this.itemsService.create(data, user.organizationId, user.userId);
   }
 
   @Post('import')
   @Roles(Role.MANAGER, Role.OWNER)
-  async importExcel(@Body() data: { items: any[] }, @CurrentUser() user: CurrentUserData) {
+  async importExcel(@Body() data: ImportItemsDto, @CurrentUser() user: CurrentUserData) {
     return this.itemsService.importFromExcel(data.items, user.organizationId, user.userId);
   }
 
@@ -56,7 +58,7 @@ export class ItemsController {
   @Roles(Role.MANAGER, Role.OPERATOR, Role.OWNER)
   async update(
     @Param('id') id: string,
-    @Body() data: any,
+    @Body() data: UpdateItemDto,
     @CurrentUser() user: CurrentUserData,
   ) {
     return this.itemsService.update(id, data, user.organizationId, user.userId);
@@ -72,7 +74,7 @@ export class ItemsController {
   @Roles(Role.MANAGER, Role.OPERATOR, Role.OWNER)
   async movimentar(
     @Param('id') id: string,
-    @Body() data: { tipo: 'ENTRADA' | 'SAIDA' | 'AJUSTE'; quantidade: number; motivo: string },
+    @Body() data: MovimentarEstoqueDto,
     @CurrentUser() user: CurrentUserData,
   ) {
     return this.itemsService.movimentar(
@@ -82,6 +84,7 @@ export class ItemsController {
       data.motivo,
       user.organizationId,
       user.name,
+      user.userId,
     );
   }
 }

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings, User, Lock, Bell, Shield, LogOut, Check, AlertCircle } from 'lucide-react';
-import { authApi } from '@/lib/api';
+import { authApi, tokenStorage } from '@/lib/api';
+import { validatePasswordStrength } from '@/lib/password-validator';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -25,18 +26,20 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const passwordStrength = validatePasswordStrength(newPassword);
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
 
-    if (newPassword !== confirmPassword) {
-      setPasswordError('As senhas não coincidem');
+    if (!passwordStrength.isValid) {
+      setPasswordError('A senha não atende aos requisitos de segurança');
       return;
     }
 
-    if (newPassword.length < 6) {
-      setPasswordError('A nova senha deve ter pelo menos 6 caracteres');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('As senhas não coincidem');
       return;
     }
 
@@ -60,8 +63,7 @@ export default function SettingsPage() {
       await authApi.logout();
     } catch (err) {
       // Even if API fails, clear local storage
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+      await tokenStorage.clear();
       localStorage.removeItem('userId');
       localStorage.removeItem('user');
     }
@@ -153,19 +155,19 @@ export default function SettingsPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Nome</label>
+                      <p className="text-sm font-medium text-muted-foreground">Nome</p>
                       <p className="mt-1">{user.name}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">E-mail</label>
+                      <p className="text-sm font-medium text-muted-foreground">E-mail</p>
                       <p className="mt-1">{user.email}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Organização</label>
+                      <p className="text-sm font-medium text-muted-foreground">Organização</p>
                       <p className="mt-1">{user.organizationName}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Cargo</label>
+                      <p className="text-sm font-medium text-muted-foreground">Cargo</p>
                       <p className="mt-1">{roleLabels[user.role] || user.role}</p>
                     </div>
                   </div>
@@ -184,8 +186,9 @@ export default function SettingsPage() {
 
               <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Senha Atual</label>
+                  <label htmlFor="settings-current-password" className="text-sm font-medium mb-2 block">Senha Atual</label>
                   <input
+                    id="settings-current-password"
                     type="password"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
@@ -195,28 +198,55 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Nova Senha</label>
+                  <label htmlFor="settings-new-password" className="text-sm font-medium mb-2 block">Nova Senha</label>
                   <input
+                    id="settings-new-password"
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition"
                     required
-                    minLength={6}
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Confirmar Nova Senha</label>
+                  <label htmlFor="settings-confirm-password" className="text-sm font-medium mb-2 block">Confirmar Nova Senha</label>
                   <input
+                    id="settings-confirm-password"
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition"
                     required
-                    minLength={6}
                   />
                 </div>
+
+                {newPassword && (
+                  <div className="text-xs text-muted-foreground space-y-1 p-3 bg-secondary/30 rounded-lg" aria-live="polite">
+                    <p className="font-semibold mb-1">Requisitos de senha:</p>
+                    <p className={passwordStrength.checks.minLength ? 'text-green-500' : ''}>
+                      {passwordStrength.checks.minLength ? '✓' : '○'} Mínimo 10 caracteres
+                    </p>
+                    <p className={passwordStrength.checks.hasUppercase ? 'text-green-500' : ''}>
+                      {passwordStrength.checks.hasUppercase ? '✓' : '○'} Pelo menos 1 maiúscula
+                    </p>
+                    <p className={passwordStrength.checks.hasLowercase ? 'text-green-500' : ''}>
+                      {passwordStrength.checks.hasLowercase ? '✓' : '○'} Pelo menos 1 minúscula
+                    </p>
+                    <p className={passwordStrength.checks.hasNumber ? 'text-green-500' : ''}>
+                      {passwordStrength.checks.hasNumber ? '✓' : '○'} Pelo menos 1 número
+                    </p>
+                    <p className={passwordStrength.checks.hasSymbol ? 'text-green-500' : ''}>
+                      {passwordStrength.checks.hasSymbol ? '✓' : '○'} Pelo menos 1 símbolo (!@#$%^&*)
+                    </p>
+                    <p className={passwordStrength.checks.notCommon ? 'text-green-500' : ''}>
+                      {passwordStrength.checks.notCommon ? '✓' : '○'} Não é senha comum
+                    </p>
+                    <p className={newPassword === confirmPassword && newPassword.length > 0 ? 'text-green-500' : ''}>
+                      {newPassword === confirmPassword && newPassword.length > 0 ? '✓' : '○'} Senhas coincidem
+                    </p>
+                  </div>
+                )}
 
                 {passwordError && (
                   <div className="p-4 text-sm bg-destructive/10 text-destructive rounded-lg border border-destructive/20 flex items-center gap-2">
@@ -265,6 +295,7 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Receber atualizações por e-mail</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
+                    <span className="sr-only">Ativar notificações por e-mail</span>
                     <input type="checkbox" className="sr-only peer" defaultChecked />
                     <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                   </label>
@@ -276,6 +307,7 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Ser notificado quando itens atingirem estoque mínimo</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
+                    <span className="sr-only">Ativar alertas de estoque baixo</span>
                     <input type="checkbox" className="sr-only peer" defaultChecked />
                     <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                   </label>
@@ -287,6 +319,7 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Notificar sobre mudanças de status em pedidos</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
+                    <span className="sr-only">Ativar atualizações de pedidos</span>
                     <input type="checkbox" className="sr-only peer" defaultChecked />
                     <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                   </label>
@@ -298,6 +331,7 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Receber resumo semanal por e-mail</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
+                    <span className="sr-only">Ativar relatórios semanais</span>
                     <input type="checkbox" className="sr-only peer" />
                     <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                   </label>

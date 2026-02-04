@@ -35,12 +35,8 @@ export class AuthController {
   // Refresh access token
   @Public()
   @Post('refresh')
-  async refreshToken(@Body() body: { refreshToken: string }) {
-    if (!body.refreshToken) {
-      throw new UnauthorizedException('Refresh token é obrigatório');
-    }
-
-    return this.authService.refreshToken(body.refreshToken);
+  async refreshToken(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshToken(dto.refreshToken);
   }
 
   // Verify token and get user info
@@ -61,36 +57,24 @@ export class AuthController {
   // Request password reset
   @Public()
   @Post('forgot-password')
-  async forgotPassword(@Body() body: { email: string }) {
-    if (!body.email) {
-      throw new UnauthorizedException('Email é obrigatório');
-    }
-
-    return this.authService.requestPasswordReset(body.email);
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.requestPasswordReset(dto.email);
   }
 
   // Reset password with token
   @Public()
   @Post('reset-password')
-  async resetPassword(@Body() body: { token: string; newPassword: string }) {
-    if (!body.token || !body.newPassword) {
-      throw new UnauthorizedException('Token e nova senha são obrigatórios');
-    }
-
-    return this.authService.resetPassword(body.token, body.newPassword);
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.newPassword);
   }
 
   // Change password (authenticated)
   @Post('change-password')
   async changePassword(
-    @Body() body: { currentPassword: string; newPassword: string },
+    @Body() dto: ChangePasswordDto,
     @CurrentUser() user: CurrentUserData,
   ) {
-    if (!body.currentPassword || !body.newPassword) {
-      throw new UnauthorizedException('Senha atual e nova senha são obrigatórias');
-    }
-
-    return this.authService.changePassword(user.userId, body.currentPassword, body.newPassword);
+    return this.authService.changePassword(user.userId, dto.currentPassword, dto.newPassword);
   }
 
   // Get current session

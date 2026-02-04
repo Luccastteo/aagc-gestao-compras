@@ -1,16 +1,18 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import { CreatePurchaseOrderDto } from './dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('purchase-orders')
 export class PurchaseOrdersController {
   constructor(private poService: PurchaseOrdersService) {}
 
   @Get()
-  async findAll(@CurrentUser() user: CurrentUserData) {
-    return this.poService.findAll(user.organizationId);
+  async findAll(@CurrentUser() user: CurrentUserData, @Query() pagination: PaginationDto) {
+    return this.poService.findAll(user.organizationId, pagination);
   }
 
   @Get(':id')
@@ -20,8 +22,17 @@ export class PurchaseOrdersController {
 
   @Post()
   @Roles(Role.OPERATOR, Role.MANAGER, Role.OWNER)
-  async create(@Body() data: any, @CurrentUser() user: CurrentUserData) {
+  async create(@Body() data: CreatePurchaseOrderDto, @CurrentUser() user: CurrentUserData) {
     return this.poService.create(data, user.organizationId, user.userId);
+  }
+
+  @Post('from-suggestions')
+  @Roles(Role.OPERATOR, Role.MANAGER, Role.OWNER)
+  async createFromSuggestions(
+    @Body() body: { suggestionIds?: string[]; supplierId?: string },
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.poService.createFromSuggestions(body, user.organizationId, user.userId);
   }
 
   @Post(':id/approve')

@@ -24,9 +24,10 @@ export class KanbanController {
   async moveCard(
     @Param('id') id: string,
     @Body('status') status: KanbanStatus,
+    @Body('position') position: number | undefined,
     @CurrentUser() user: CurrentUserData,
   ) {
-    return this.kanbanService.moveCard(id, status, user.organizationId, user.userId);
+    return this.kanbanService.moveCard(id, status, position, user.organizationId, user.userId);
   }
 
   @Patch('cards/:id')

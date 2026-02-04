@@ -74,8 +74,24 @@ async function main() {
   console.log('✅ Users created: Owner, Manager, Operator, Viewer');
 
   // Create suppliers
-  const supplier1 = await prisma.supplier.create({
-    data: {
+  const supplier1 = await prisma.supplier.upsert({
+    where: {
+      organizationId_codigo: {
+        organizationId: org.id,
+        codigo: 'FORN-001',
+      },
+    },
+    update: {
+      nome: 'Rolamentos Brasil Ltda',
+      cnpj: '12.345.678/0001-90',
+      email: 'contato@rolamentosbrasil.com.br',
+      telefone: '(11) 3456-7890',
+      whatsapp: '5511987654321',
+      prazoMedioDias: 5,
+      qualidade: 'excelente',
+      status: 'ativo',
+    },
+    create: {
       codigo: 'FORN-001',
       nome: 'Rolamentos Brasil Ltda',
       cnpj: '12.345.678/0001-90',
@@ -89,8 +105,24 @@ async function main() {
     },
   });
 
-  const supplier2 = await prisma.supplier.create({
-    data: {
+  const supplier2 = await prisma.supplier.upsert({
+    where: {
+      organizationId_codigo: {
+        organizationId: org.id,
+        codigo: 'FORN-002',
+      },
+    },
+    update: {
+      nome: 'Peças Industriais SP',
+      cnpj: '98.765.432/0001-10',
+      email: 'vendas@pecasindustriais.com.br',
+      telefone: '(11) 2345-6789',
+      whatsapp: '5511976543210',
+      prazoMedioDias: 7,
+      qualidade: 'bom',
+      status: 'ativo',
+    },
+    create: {
       codigo: 'FORN-002',
       nome: 'Peças Industriais SP',
       cnpj: '98.765.432/0001-10',
@@ -181,25 +213,68 @@ async function main() {
   ];
 
   for (const itemData of items) {
-    await prisma.item.create({ data: itemData });
+    await prisma.item.upsert({
+      where: {
+        organizationId_sku: {
+          organizationId: org.id,
+          sku: itemData.sku,
+        },
+      },
+      update: {
+        descricao: itemData.descricao,
+        categoria: itemData.categoria,
+        unidade: itemData.unidade,
+        saldo: itemData.saldo,
+        minimo: itemData.minimo,
+        maximo: itemData.maximo,
+        leadTimeDays: itemData.leadTimeDays,
+        custoUnitario: itemData.custoUnitario,
+        supplierId: itemData.supplierId,
+        localizacao: itemData.localizacao,
+        organizationId: org.id,
+      },
+      create: itemData,
+    });
   }
 
   console.log(`✅ ${items.length} items created`);
 
   // Create kanban board
-  const board = await prisma.kanbanBoard.create({
-    data: {
-      nome: 'Compras e Reposição',
-      descricao: 'Kanban para gestão de pedidos de compra',
-      organizationId: org.id,
-    },
+  const existingBoard = await prisma.kanbanBoard.findFirst({
+    where: { organizationId: org.id, nome: 'Compras e Reposição' },
   });
+
+  const board = existingBoard
+    ? await prisma.kanbanBoard.update({
+        where: { id: existingBoard.id },
+        data: { descricao: 'Kanban para gestão de pedidos de compra' },
+      })
+    : await prisma.kanbanBoard.create({
+        data: {
+          nome: 'Compras e Reposição',
+          descricao: 'Kanban para gestão de pedidos de compra',
+          organizationId: org.id,
+        },
+      });
 
   console.log('✅ Kanban board created:', board.nome);
 
   // Create a sample purchase order
-  const po = await prisma.purchaseOrder.create({
-    data: {
+  const po = await prisma.purchaseOrder.upsert({
+    where: {
+      organizationId_codigo: {
+        organizationId: org.id,
+        codigo: 'PO-2026-001',
+      },
+    },
+    update: {
+      status: 'DRAFT',
+      supplierId: supplier1.id,
+      observacoes: 'Pedido de reposição de rolamentos críticos',
+      createdById: manager.id,
+      dataAbertura: new Date(),
+    },
+    create: {
       codigo: 'PO-2026-001',
       status: 'DRAFT',
       supplierId: supplier1.id,
@@ -214,20 +289,26 @@ async function main() {
   const item1 = items[0]; // ROL-6205
   const item2 = items[1]; // ROL-6206
 
-  const poItem1 = await prisma.purchaseOrderItem.create({
+  // Recreate PO items deterministically
+  await prisma.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
+
+  const item1Db = (await prisma.item.findFirst({ where: { sku: item1.sku, organizationId: org.id } }))!;
+  const item2Db = (await prisma.item.findFirst({ where: { sku: item2.sku, organizationId: org.id } }))!;
+
+  await prisma.purchaseOrderItem.create({
     data: {
       purchaseOrderId: po.id,
-      itemId: (await prisma.item.findFirst({ where: { sku: item1.sku, organizationId: org.id } }))!.id,
+      itemId: item1Db.id,
       quantidade: 15,
       precoUnitario: 45.0,
       valorTotal: 675.0,
     },
   });
 
-  const poItem2 = await prisma.purchaseOrderItem.create({
+  await prisma.purchaseOrderItem.create({
     data: {
       purchaseOrderId: po.id,
-      itemId: (await prisma.item.findFirst({ where: { sku: item2.sku, organizationId: org.id } }))!.id,
+      itemId: item2Db.id,
       quantidade: 10,
       precoUnitario: 52.0,
       valorTotal: 520.0,
@@ -242,18 +323,24 @@ async function main() {
   console.log('✅ Sample purchase order created:', po.codigo);
 
   // Create kanban card for this PO
-  await prisma.kanbanCard.create({
-    data: {
-      titulo: `Pedido ${po.codigo} - Rolamentos`,
-      descricao: 'Reposição urgente de rolamentos 6205 e 6206',
-      status: 'TODO',
-      posicao: 0,
-      purchaseOrderId: po.id,
-      boardId: board.id,
-      createdById: operator.id,
-      organizationId: org.id,
-    },
+  const existingCard = await prisma.kanbanCard.findFirst({
+    where: { organizationId: org.id, purchaseOrderId: po.id, boardId: board.id },
   });
+
+  if (!existingCard) {
+    await prisma.kanbanCard.create({
+      data: {
+        titulo: `Pedido ${po.codigo} - Rolamentos`,
+        descricao: 'Reposição urgente de rolamentos 6205 e 6206',
+        status: 'TODO',
+        posicao: 0,
+        purchaseOrderId: po.id,
+        boardId: board.id,
+        createdById: operator.id,
+        organizationId: org.id,
+      },
+    });
+  }
 
   console.log('✅ Kanban card created');
 

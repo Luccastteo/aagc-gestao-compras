@@ -44,6 +44,15 @@ export class KanbanService {
   async createCard(data: any, organizationId: string, userId: string) {
     const board = await this.getBoard(organizationId);
 
+    if (data.purchaseOrderId) {
+      const po = await this.prisma.purchaseOrder.findFirst({
+        where: { id: data.purchaseOrderId, organizationId },
+      });
+      if (!po) {
+        throw new NotFoundException('Purchase order not found');
+      }
+    }
+
     const maxPosicao = await this.prisma.kanbanCard.findFirst({
       where: { boardId: board.id, status: 'TODO' },
       orderBy: { posicao: 'desc' },
@@ -96,6 +105,7 @@ export class KanbanService {
   async moveCard(
     id: string,
     newStatus: KanbanStatus,
+    newPosition: number | undefined,
     organizationId: string,
     userId: string,
     notifySupplier = true,
@@ -112,14 +122,73 @@ export class KanbanService {
     }
 
     const oldStatus = card.status;
+    const oldPosicao = card.posicao;
 
-    const updated = await this.prisma.kanbanCard.update({
-      where: { id },
-      data: { status: newStatus },
-      include: {
-        purchaseOrder: { include: { supplier: true } },
-        createdBy: { select: { name: true } },
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Busca cards por coluna (status) ordenados por posição
+      const sourceStatus = oldStatus;
+      const targetStatus = newStatus;
+
+      const sourceCards = await tx.kanbanCard.findMany({
+        where: { boardId: card.boardId, organizationId, status: sourceStatus, id: { not: id } },
+        orderBy: { posicao: 'asc' },
+        select: { id: true },
+      });
+
+      const targetCards =
+        sourceStatus === targetStatus
+          ? sourceCards
+          : await tx.kanbanCard.findMany({
+              where: { boardId: card.boardId, organizationId, status: targetStatus, id: { not: id } },
+              orderBy: { posicao: 'asc' },
+              select: { id: true },
+            });
+
+      const clampedPosition = Math.max(
+        0,
+        Math.min(
+          typeof newPosition === 'number' && Number.isFinite(newPosition) ? newPosition : targetCards.length,
+          targetCards.length,
+        ),
+      );
+
+      const targetIds = targetCards.map((c) => c.id);
+      targetIds.splice(clampedPosition, 0, id);
+
+      const updates: Array<ReturnType<typeof tx.kanbanCard.update>> = [];
+
+      // Atualiza o card movido (status + posicao)
+      updates.push(
+        tx.kanbanCard.update({
+          where: { id },
+          data: { status: targetStatus, posicao: clampedPosition },
+        }),
+      );
+
+      // Reindexa coluna alvo
+      for (let idx = 0; idx < targetIds.length; idx++) {
+        const cardId = targetIds[idx];
+        if (cardId === id) continue;
+        updates.push(tx.kanbanCard.update({ where: { id: cardId }, data: { posicao: idx } }));
+      }
+
+      // Reindexa coluna origem se mudou de status
+      if (sourceStatus !== targetStatus) {
+        const sourceIds = sourceCards.map((c) => c.id);
+        for (let idx = 0; idx < sourceIds.length; idx++) {
+          updates.push(tx.kanbanCard.update({ where: { id: sourceIds[idx] }, data: { posicao: idx } }));
+        }
+      }
+
+      await Promise.all(updates);
+
+      return tx.kanbanCard.findFirst({
+        where: { id, organizationId },
+        include: {
+          purchaseOrder: { include: { supplier: true } },
+          createdBy: { select: { name: true } },
+        },
+      });
     });
 
     await this.prisma.auditLog.create({
@@ -128,14 +197,14 @@ export class KanbanService {
         action: 'UPDATE',
         entity: 'KanbanCard',
         entityId: id,
-        before: JSON.stringify({ status: oldStatus }),
-        after: JSON.stringify({ status: newStatus }),
+        before: JSON.stringify({ status: oldStatus, posicao: oldPosicao }),
+        after: JSON.stringify({ status: newStatus, posicao: updated?.posicao }),
         organizationId,
       },
     });
 
     // Send notifications if enabled and linked to purchase order with supplier
-    if (notifySupplier && updated.purchaseOrder?.supplier) {
+    if (notifySupplier && updated?.purchaseOrder?.supplier) {
       const supplier = updated.purchaseOrder.supplier;
       await this.notificationsService.notifyKanbanMove(
         updated.titulo,

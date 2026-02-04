@@ -1,16 +1,48 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kanbanApi } from '@/lib/api';
 import { 
   Kanban as KanbanIcon, ArrowRight, CheckCircle2, 
   Bell, Mail, MessageCircle, Bot
 } from 'lucide-react';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { useDroppable } from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+type Status = 'TODO' | 'IN_PROGRESS' | 'DONE';
+type Card = any;
+
+const STATUSES: Array<{ id: Status; label: string; tone: string }> = [
+  { id: 'TODO', label: 'A Fazer', tone: 'bg-secondary/30' },
+  { id: 'IN_PROGRESS', label: 'Em Andamento', tone: 'bg-yellow-500/10' },
+  { id: 'DONE', label: 'Concluído', tone: 'bg-green-500/10' },
+];
 
 export default function KanbanPage() {
   const queryClient = useQueryClient();
   const [lastNotification, setLastNotification] = useState<string | null>(null);
+  const [cardsByStatus, setCardsByStatus] = useState<Record<Status, Card[]>>({
+    TODO: [],
+    IN_PROGRESS: [],
+    DONE: [],
+  });
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const { data: board, isLoading } = useQuery({
     queryKey: ['kanban'],
@@ -18,8 +50,8 @@ export default function KanbanPage() {
   });
 
   const moveMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      kanbanApi.moveCard(id, status),
+    mutationFn: ({ id, status, position }: { id: string; status: Status; position: number }) =>
+      kanbanApi.moveCard(id, status, position),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['kanban'] });
       
@@ -36,15 +68,85 @@ export default function KanbanPage() {
         }
       }
     },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['kanban'] });
+    },
   });
+
+  useEffect(() => {
+    const cards = board?.cards || [];
+    const next: Record<Status, Card[]> = { TODO: [], IN_PROGRESS: [], DONE: [] };
+    for (const c of cards) {
+      if (c.status === 'TODO') next.TODO.push(c);
+      if (c.status === 'IN_PROGRESS') next.IN_PROGRESS.push(c);
+      if (c.status === 'DONE') next.DONE.push(c);
+    }
+    setCardsByStatus(next);
+  }, [board]);
+
+  const idToStatus = useMemo(() => {
+    const map = new Map<string, Status>();
+    (Object.keys(cardsByStatus) as Status[]).forEach((s) => {
+      for (const c of cardsByStatus[s]) map.set(c.id, s);
+    });
+    return map;
+  }, [cardsByStatus]);
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Carregando...</div>;
   }
 
-  const todoCards = board?.cards?.filter((c: any) => c.status === 'TODO') || [];
-  const inProgressCards = board?.cards?.filter((c: any) => c.status === 'IN_PROGRESS') || [];
-  const doneCards = board?.cards?.filter((c: any) => c.status === 'DONE') || [];
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    const sourceStatus = idToStatus.get(activeId);
+    if (!sourceStatus) return;
+
+    const isOverAStatus = (STATUSES.map((s) => s.id) as string[]).includes(overId);
+    const targetStatus = isOverAStatus ? (overId as Status) : idToStatus.get(overId);
+    if (!targetStatus) return;
+
+    const sourceCards = cardsByStatus[sourceStatus];
+    const targetCards = cardsByStatus[targetStatus];
+
+    const sourceIndex = sourceCards.findIndex((c) => c.id === activeId);
+    if (sourceIndex < 0) return;
+
+    const overIndex = isOverAStatus
+      ? targetCards.length
+      : targetCards.findIndex((c) => c.id === overId);
+
+    const nextIndex = overIndex < 0 ? targetCards.length : overIndex;
+
+    // Otimista: atualiza UI local
+    setCardsByStatus((prev) => {
+      const next = { ...prev } as Record<Status, Card[]>;
+      const moved = prev[sourceStatus].find((c) => c.id === activeId);
+      if (!moved) return prev;
+
+      // Remove da origem
+      const newSource = prev[sourceStatus].filter((c) => c.id !== activeId);
+
+      if (sourceStatus === targetStatus) {
+        const reordered = arrayMove(prev[sourceStatus], sourceIndex, nextIndex);
+        next[sourceStatus] = reordered;
+        return next;
+      }
+
+      const newTarget = [...prev[targetStatus]];
+      newTarget.splice(nextIndex, 0, { ...moved, status: targetStatus });
+
+      next[sourceStatus] = newSource;
+      next[targetStatus] = newTarget;
+      return next;
+    });
+
+    moveMutation.mutate({ id: activeId, status: targetStatus, position: nextIndex });
+  };
 
   return (
     <div className="space-y-6">
@@ -85,169 +187,142 @@ export default function KanbanPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-4 min-h-[500px]">
-        {/* A FAZER */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">A Fazer</h2>
-            <span className="px-2 py-1 bg-secondary rounded-full text-sm">{todoCards.length}</span>
-          </div>
-          <div className="space-y-3 min-h-[400px] p-3 bg-secondary/30 rounded-lg">
-            {todoCards.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhum card</p>
-            ) : (
-              todoCards.map((card: any) => (
-                <KanbanCard
-                  key={card.id}
-                  card={card}
-                  onMove={() => moveMutation.mutate({ id: card.id, status: 'IN_PROGRESS' })}
-                  moveLabel="Iniciar"
-                  moveColor="bg-blue-600 hover:bg-blue-700"
-                  borderColor=""
-                  isPending={moveMutation.isPending}
-                />
-              ))
-            )}
-          </div>
+      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+        <div className="grid grid-cols-3 gap-4 min-h-[500px]">
+          {STATUSES.map((col) => (
+            <KanbanColumn
+              key={col.id}
+              status={col.id}
+              label={col.label}
+              tone={col.tone}
+              cards={cardsByStatus[col.id]}
+              isPending={moveMutation.isPending}
+            />
+          ))}
         </div>
+      </DndContext>
+    </div>
+  );
+}
 
-        {/* EM ANDAMENTO */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Em Andamento</h2>
-            <span className="px-2 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">{inProgressCards.length}</span>
-          </div>
-          <div className="space-y-3 min-h-[400px] p-3 bg-yellow-500/10 rounded-lg">
-            {inProgressCards.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhum card</p>
-            ) : (
-              inProgressCards.map((card: any) => (
-                <KanbanCard
-                  key={card.id}
-                  card={card}
-                  onMove={() => moveMutation.mutate({ id: card.id, status: 'DONE' })}
-                  moveLabel="Concluir"
-                  moveColor="bg-green-600 hover:bg-green-700"
-                  borderColor="border-yellow-500/50"
-                  isPending={moveMutation.isPending}
-                />
-              ))
-            )}
-          </div>
-        </div>
+function KanbanColumn({
+  status,
+  label,
+  tone,
+  cards,
+  isPending,
+}: {
+  status: Status;
+  label: string;
+  tone: string;
+  cards: Card[];
+  isPending: boolean;
+}) {
+  const { setNodeRef } = useDroppable({ id: status });
 
-        {/* CONCLUÍDO */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Concluído</h2>
-            <span className="px-2 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">{doneCards.length}</span>
-          </div>
-          <div className="space-y-3 min-h-[400px] p-3 bg-green-500/10 rounded-lg">
-            {doneCards.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhum card</p>
-            ) : (
-              doneCards.map((card: any) => (
-                <div key={card.id} className="p-4 bg-card border border-green-500/50 rounded-lg opacity-75">
-                  <p className="font-medium flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                    {card.titulo}
-                  </p>
-                  {card.descricao && (
-                    <p className="text-sm text-muted-foreground mt-1">{card.descricao}</p>
-                  )}
-                  {card.purchaseOrder && (
-                    <div className="mt-2 pt-2 border-t border-border">
-                      <p className="text-xs text-primary">
-                        Pedido: {card.purchaseOrder.codigo}
-                      </p>
-                      {card.purchaseOrder.supplier && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          Fornecedor: {card.purchaseOrder.supplier.nome}
-                          {card.purchaseOrder.supplier.whatsapp && (
-                            <MessageCircle className="w-3 h-3 text-green-500" />
-                          )}
-                          {card.purchaseOrder.supplier.email && (
-                            <Mail className="w-3 h-3 text-blue-500" />
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+  const countBadge =
+    status === 'TODO'
+      ? 'bg-secondary'
+      : status === 'IN_PROGRESS'
+        ? 'bg-yellow-500/20 text-yellow-300'
+        : 'bg-green-500/20 text-green-300';
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">{label}</h2>
+        <span className={`px-2 py-1 rounded-full text-sm ${countBadge}`}>{cards.length}</span>
+      </div>
+
+      <div ref={setNodeRef} className={`space-y-3 min-h-[400px] p-3 ${tone} rounded-lg`}>
+        {cards.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">Nenhum card</p>
+        ) : (
+          <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+            {cards.map((card) => (
+              <SortableKanbanCard key={card.id} card={card} disabled={isPending} />
+            ))}
+          </SortableContext>
+        )}
       </div>
     </div>
   );
 }
 
-// Kanban Card Component
-function KanbanCard({ 
-  card, 
-  onMove, 
-  moveLabel, 
-  moveColor, 
-  borderColor,
-  isPending 
-}: { 
-  card: any; 
-  onMove: () => void; 
-  moveLabel: string; 
-  moveColor: string;
-  borderColor: string;
-  isPending: boolean;
-}) {
-  const hasNotificationChannels = card.purchaseOrder?.supplier?.email || 
-                                   card.purchaseOrder?.supplier?.whatsapp;
+function SortableKanbanCard({ card, disabled }: { card: Card; disabled: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: card.id,
+    disabled,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  } as React.CSSProperties;
+
+  const hasNotificationChannels =
+    card.purchaseOrder?.supplier?.email || card.purchaseOrder?.supplier?.whatsapp;
+
+  const borderColor =
+    card.status === 'IN_PROGRESS'
+      ? 'border-yellow-500/50'
+      : card.status === 'DONE'
+        ? 'border-green-500/50'
+        : 'border-border';
 
   return (
-    <div className={`p-4 bg-card border ${borderColor || 'border-border'} rounded-lg hover:border-primary/50 transition-colors`}>
-      <p className="font-medium">{card.titulo}</p>
-      {card.descricao && (
-        <p className="text-sm text-muted-foreground mt-1">{card.descricao}</p>
-      )}
-      {card.purchaseOrder && (
-        <div className="mt-2 pt-2 border-t border-border">
-          <p className="text-xs text-primary">
-            Pedido: {card.purchaseOrder.codigo}
-          </p>
-          {card.purchaseOrder.supplier && (
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              {card.purchaseOrder.supplier.nome}
-              {card.purchaseOrder.supplier.whatsapp && (
-                <MessageCircle className="w-3 h-3 text-green-500" title="WhatsApp ativo" />
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`p-4 bg-card border ${borderColor} rounded-lg hover:border-primary/50 transition-colors ${
+        isDragging ? 'opacity-70' : ''
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium">{card.titulo}</p>
+          {card.descricao && <p className="text-sm text-muted-foreground mt-1">{card.descricao}</p>}
+          {card.purchaseOrder && (
+            <div className="mt-2 pt-2 border-t border-border">
+              <p className="text-xs text-primary">Pedido: {card.purchaseOrder.codigo}</p>
+              {card.purchaseOrder.supplier && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  {card.purchaseOrder.supplier.nome}
+                  {card.purchaseOrder.supplier.whatsapp && (
+                    <span title="WhatsApp ativo">
+                      <MessageCircle className="w-3 h-3 text-green-500" aria-label="WhatsApp ativo" role="img" />
+                    </span>
+                  )}
+                  {card.purchaseOrder.supplier.email && (
+                    <span title="E-mail ativo">
+                      <Mail className="w-3 h-3 text-blue-500" aria-label="E-mail ativo" role="img" />
+                    </span>
+                  )}
+                </p>
               )}
-              {card.purchaseOrder.supplier.email && (
-                <Mail className="w-3 h-3 text-blue-500" title="E-mail ativo" />
-              )}
-            </p>
+            </div>
           )}
         </div>
-      )}
-      
-      <button
-        onClick={onMove}
-        disabled={isPending}
-        className={`mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-white rounded disabled:opacity-50 ${moveColor}`}
-      >
-        {isPending ? (
-          <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-        ) : (
-          <>
-            {moveLabel === 'Concluir' ? (
-              <CheckCircle2 className="w-4 h-4" />
-            ) : (
-              <ArrowRight className="w-4 h-4" />
-            )}
-            {moveLabel}
-            {hasNotificationChannels && (
-              <Bell className="w-3 h-3 ml-1 opacity-70" title="Notificação será enviada" />
-            )}
-          </>
-        )}
-      </button>
+
+        <button
+          type="button"
+          className="shrink-0 px-2 py-1 text-xs rounded bg-secondary hover:bg-secondary/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          aria-label="Arrastar card"
+          {...attributes}
+          {...listeners}
+        >
+          Arrastar
+          {hasNotificationChannels && (
+            <span title="Notificação será enviada">
+              <Bell className="inline w-3 h-3 ml-1 opacity-70" aria-label="Notificação será enviada" role="img" />
+            </span>
+          )}
+        </button>
+      </div>
+
+      <p className="mt-3 text-xs text-muted-foreground">
+        Dica: arraste e solte para mudar coluna e ordem.
+      </p>
     </div>
   );
 }

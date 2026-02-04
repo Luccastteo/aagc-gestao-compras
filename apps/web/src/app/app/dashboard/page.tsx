@@ -32,7 +32,7 @@ const statusLabels: Record<string, string> = {
 const COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4'];
 
 export default function DashboardPage() {
-  const { data: items } = useQuery({
+  const { data: itemsResponse } = useQuery({
     queryKey: ['items'],
     queryFn: itemsApi.getAll,
   });
@@ -42,7 +42,7 @@ export default function DashboardPage() {
     queryFn: itemsApi.getCritical,
   });
 
-  const { data: purchaseOrders } = useQuery({
+  const { data: purchaseOrdersResponse } = useQuery({
     queryKey: ['purchase-orders'],
     queryFn: purchaseOrdersApi.getAll,
   });
@@ -52,49 +52,55 @@ export default function DashboardPage() {
     queryFn: auditApi.getStats,
   });
 
-  const pendingPOs = purchaseOrders?.filter((po: any) => 
-    ['DRAFT', 'APPROVED', 'SENT'].includes(po.status)
-  ) || [];
+  // Extrair arrays de dados das respostas paginadas
+  const items = itemsResponse?.data || [];
 
-  const totalValue = purchaseOrders?.reduce((sum: number, po: any) => sum + po.valorTotal, 0) || 0;
+  // Extrair array de dados da resposta paginada
+  const purchaseOrders = purchaseOrdersResponse?.data || [];
+
+  const pendingPOs = purchaseOrders.filter((po: any) => 
+    ['DRAFT', 'APPROVED', 'SENT'].includes(po.status)
+  );
+
+  const totalValue = purchaseOrders.reduce((sum: number, po: any) => sum + po.valorTotal, 0);
 
   // Dados para gráfico de status dos pedidos
   const orderStatusData = [
-    { name: 'Rascunho', value: purchaseOrders?.filter((po: any) => po.status === 'DRAFT').length || 0, color: '#6b7280' },
-    { name: 'Aprovado', value: purchaseOrders?.filter((po: any) => po.status === 'APPROVED').length || 0, color: '#3b82f6' },
-    { name: 'Enviado', value: purchaseOrders?.filter((po: any) => po.status === 'SENT').length || 0, color: '#f59e0b' },
-    { name: 'Entregue', value: purchaseOrders?.filter((po: any) => po.status === 'DELIVERED').length || 0, color: '#22c55e' },
+    { name: 'Rascunho', value: purchaseOrders.filter((po: any) => po.status === 'DRAFT').length, color: '#6b7280' },
+    { name: 'Aprovado', value: purchaseOrders.filter((po: any) => po.status === 'APPROVED').length, color: '#3b82f6' },
+    { name: 'Enviado', value: purchaseOrders.filter((po: any) => po.status === 'SENT').length, color: '#f59e0b' },
+    { name: 'Entregue', value: purchaseOrders.filter((po: any) => po.status === 'DELIVERED').length, color: '#22c55e' },
   ];
 
   // Dados para gráfico de pizza - distribuição de estoque
   const stockDistribution = [
-    { name: 'Normal', value: (items?.filter((i: any) => i.saldo > i.minimo).length || 0), color: '#22c55e' },
-    { name: 'Crítico', value: (items?.filter((i: any) => i.saldo <= i.minimo && i.saldo > 0).length || 0), color: '#f59e0b' },
-    { name: 'Zerado', value: (items?.filter((i: any) => i.saldo === 0).length || 0), color: '#ef4444' },
+    { name: 'Normal', value: items.filter((i: any) => i.saldo > i.minimo).length, color: '#22c55e' },
+    { name: 'Crítico', value: items.filter((i: any) => i.saldo <= i.minimo && i.saldo > 0).length, color: '#f59e0b' },
+    { name: 'Zerado', value: items.filter((i: any) => i.saldo === 0).length, color: '#ef4444' },
   ];
 
   // Dados para gráfico de barras - Top 5 itens por valor em estoque
   const topItemsByValue = items
-    ?.map((item: any) => ({
+    .map((item: any) => ({
       name: item.sku.substring(0, 10),
       valor: item.saldo * item.custoUnitario,
       quantidade: item.saldo,
     }))
     .sort((a: any, b: any) => b.valor - a.valor)
-    .slice(0, 6) || [];
+    .slice(0, 6);
 
   // Dados para gráfico de área - Níveis de estoque
   const stockLevels = items
-    ?.slice(0, 8)
+    .slice(0, 8)
     .map((item: any) => ({
       name: item.sku.substring(0, 8),
       atual: item.saldo,
       minimo: item.minimo,
       maximo: item.maximo,
-    })) || [];
+    }));
 
   // Valor total em estoque
-  const totalStockValue = items?.reduce((sum: number, item: any) => sum + (item.saldo * item.custoUnitario), 0) || 0;
+  const totalStockValue = items.reduce((sum: number, item: any) => sum + (item.saldo * item.custoUnitario), 0);
 
   return (
     <div className="space-y-6">
@@ -132,7 +138,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Total de Itens</p>
-              <p className="text-2xl font-bold mt-1">{items?.length || 0}</p>
+              <p className="text-2xl font-bold mt-1">{items.length}</p>
             </div>
             <Package className="w-9 h-9 text-blue-500" />
           </div>
@@ -231,7 +237,7 @@ export default function DashboardPage() {
                 outerRadius={90}
                 paddingAngle={5}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }) => `${name} ${(((percent ?? 0) * 100)).toFixed(0)}%`}
                 labelLine={false}
               >
                 {stockDistribution.map((entry, index) => (
@@ -270,7 +276,7 @@ export default function DashboardPage() {
                   border: '1px solid #374151',
                   borderRadius: '8px'
                 }}
-                formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Valor']}
+                formatter={(value?: number) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Valor']}
               />
               <Bar dataKey="valor" fill="#06b6d4" radius={[0, 4, 4, 0]} />
             </BarChart>

@@ -32,7 +32,7 @@ docker-compose up -d
 # Configurar banco de dados
 cd apps/api
 copy .env.example .env
-pnpm prisma migrate dev
+pnpm prisma migrate dev --skip-generate
 pnpm prisma db seed
 cd ../..
 
@@ -66,6 +66,7 @@ Serviços disponíveis em:
 aagc-saas/
 ├── apps/
 │   ├── api/          # API NestJS (Fastify)
+│   ├── desktop/      # Desktop thin client (Tauri)
 │   ├── web/          # Frontend Next.js
 │   └── worker/       # Workers BullMQ
 ├── docker-compose.yml
@@ -124,6 +125,7 @@ aagc-saas/
 - Ciclo completo: Rascunho → Aprovado → Enviado → Entregue
 - Pedidos com múltiplos itens
 - Geração automática de código
+- **Gerar PO a partir de sugestões**: botão “Sugestões do Agente” → “Gerar Pedido(s) (rascunho)”
 - **Ações por cargo**:
   - Operador: Criar rascunhos
   - Gerente: Aprovar e enviar
@@ -153,12 +155,17 @@ aagc-saas/
 - Toda ação é registrada
 - Snapshots antes/depois (JSON)
 - Rastreamento de usuário
-- Filtrável por entidade/ação/usuário
+- UI com **paginação e filtros** (entidade/ação)
 
 ### ✅ Jobs Automatizados (Worker)
-- **Verificação diária de estoque**: Cria cards no kanban para itens críticos
-- **Follow-up de pedidos**: Lembra sobre pedidos pendentes > 24h
-- **Agendado**: Baseado em cron (8h diariamente, a cada 4h)
+- **inventory_daily_check**:
+  - DEV: a cada 60s (visualização)
+  - cria/atualiza alertas e sugestões persistidas
+  - registra AuditLog
+- **po_followup**:
+  - DEV: a cada 60s
+  - para POs `SENT` sem update > 24h: cria follow-up **SIMULADO** em `CommsLog`
+  - registra AuditLog
 
 ### 📝 Nota sobre Relatórios PDF
 > ⚠️ **A funcionalidade de geração de PDFs (pedidos e estoque) foi temporariamente removida** devido a conflitos de dependências com o jsPDF durante o build do Next.js. Esta funcionalidade será reimplementada no backend (API) em breve, permitindo geração de PDFs de forma mais robusta e segura.
@@ -186,7 +193,16 @@ pnpm dev
 # Apenas Worker
 cd apps/worker
 pnpm dev
+
+# Desktop (Tauri)
+cd apps/desktop
+pnpm install
+pnpm tauri dev
 ```
+
+### Desktop (Thin client) — notas
+- O desktop é uma **casca Tauri** que carrega o SaaS Web (por padrão `http://localhost:3000`).
+- Tokens podem ser armazenados no **Keychain/Credential Manager** via comandos Tauri (`set_tokens/get_tokens/clear_tokens`) quando o Web estiver rodando dentro do desktop.
 
 ### Comandos do Banco de Dados
 
@@ -245,6 +261,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 #### Pedidos de Compra
 - `GET /purchase-orders` - Listar todos
 - `POST /purchase-orders` - Criar rascunho
+- `POST /purchase-orders/from-suggestions` - Gerar rascunho(s) a partir de sugestões OPEN
 - `POST /purchase-orders/:id/approve` - Aprovar (GERENTE+)
 - `POST /purchase-orders/:id/send` - Enviar ao fornecedor
 - `POST /purchase-orders/:id/receive` - Receber e atualizar estoque

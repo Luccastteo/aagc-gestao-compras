@@ -9,6 +9,66 @@ export const api = axios.create({
   },
 });
 
+type StoredTokens = { accessToken?: string | null; refreshToken?: string | null };
+
+const isTauri = () =>
+  typeof window !== 'undefined' &&
+  Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
+
+async function tauriInvoke<T>(command: string, payload?: Record<string, unknown>): Promise<T> {
+  const mod = await import('@tauri-apps/api/core');
+  return mod.invoke<T>(command, payload);
+}
+
+async function getStoredTokens(): Promise<StoredTokens> {
+  if (isTauri()) {
+    try {
+      return await tauriInvoke<StoredTokens>('get_tokens');
+    } catch {
+      // fallback
+    }
+  }
+
+  return {
+    accessToken: localStorage.getItem('accessToken'),
+    refreshToken: localStorage.getItem('refreshToken'),
+  };
+}
+
+async function setStoredTokens(tokens: { accessToken: string; refreshToken: string }) {
+  if (isTauri()) {
+    try {
+      await tauriInvoke<void>('set_tokens', tokens);
+      return;
+    } catch {
+      // fallback
+    }
+  }
+
+  localStorage.setItem('accessToken', tokens.accessToken);
+  localStorage.setItem('refreshToken', tokens.refreshToken);
+}
+
+async function clearStoredTokens() {
+  if (isTauri()) {
+    try {
+      await tauriInvoke<void>('clear_tokens');
+    } catch {
+      // fallback
+    }
+  }
+
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+}
+
+// Exportado para login/settings/desktop (Tauri) usarem armazenamento seguro quando disponível.
+export const tokenStorage = {
+  get: getStoredTokens,
+  set: setStoredTokens,
+  clear: clearStoredTokens,
+};
+
 // Flag to prevent multiple refresh attempts
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (token: string) => void; reject: (error: any) => void }> = [];
@@ -25,9 +85,9 @@ const processQueue = (error: any, token: string | null = null) => {
 };
 
 // Add auth interceptor - use JWT token or fallback to userId
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   if (typeof window !== 'undefined') {
-    const accessToken = localStorage.getItem('accessToken');
+    const { accessToken } = await getStoredTokens();
     const userId = localStorage.getItem('userId');
     
     if (accessToken) {
@@ -62,14 +122,15 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+      const refreshToken =
+        typeof window !== 'undefined' ? (await getStoredTokens()).refreshToken : null;
 
       if (refreshToken) {
         try {
           const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
           
           if (data.accessToken) {
-            localStorage.setItem('accessToken', data.accessToken);
+            await setStoredTokens({ accessToken: data.accessToken, refreshToken });
             api.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
             originalRequest.headers['Authorization'] = `Bearer ${data.accessToken}`;
             
@@ -80,8 +141,7 @@ api.interceptors.response.use(
           processQueue(refreshError, null);
           // Clear all tokens and redirect to login
           if (typeof window !== 'undefined') {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
+            await clearStoredTokens();
             localStorage.removeItem('userId');
             localStorage.removeItem('user');
             window.location.href = '/login';
@@ -93,8 +153,7 @@ api.interceptors.response.use(
       } else {
         // No refresh token, redirect to login
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
+          await clearStoredTokens();
           localStorage.removeItem('userId');
           localStorage.removeItem('user');
           window.location.href = '/login';
@@ -136,8 +195,7 @@ export const authApi = {
     const { data } = await api.post('/auth/logout');
     // Clear local storage
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+      await clearStoredTokens();
       localStorage.removeItem('userId');
       localStorage.removeItem('user');
     }
@@ -203,6 +261,10 @@ export const suppliersApi = {
     const { data } = await api.put(`/suppliers/${id}`, supplier);
     return data;
   },
+  delete: async (id: string) => {
+    const { data } = await api.delete(`/suppliers/${id}`);
+    return data;
+  },
 };
 
 export const purchaseOrdersApi = {
@@ -216,6 +278,10 @@ export const purchaseOrdersApi = {
   },
   create: async (po: any) => {
     const { data} = await api.post('/purchase-orders', po);
+    return data;
+  },
+  createFromSuggestions: async (params?: { suggestionIds?: string[]; supplierId?: string }) => {
+    const { data } = await api.post('/purchase-orders/from-suggestions', params || {});
     return data;
   },
   approve: async (id: string) => {
@@ -241,8 +307,8 @@ export const kanbanApi = {
     const { data } = await api.post('/kanban/cards', card);
     return data;
   },
-  moveCard: async (id: string, status: string) => {
-    const { data } = await api.patch(`/kanban/cards/${id}/move`, { status });
+  moveCard: async (id: string, status: string, position?: number) => {
+    const { data } = await api.patch(`/kanban/cards/${id}/move`, { status, position });
     return data;
   },
 };

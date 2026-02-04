@@ -1,17 +1,54 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaginationDto, PaginatedResponse } from '../common/dto/pagination.dto';
 import * as XLSX from 'xlsx';
 
 @Injectable()
 export class ItemsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(organizationId: string) {
-    return this.prisma.item.findMany({
-      where: { organizationId },
-      include: { supplier: true },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(organizationId: string, pagination?: PaginationDto): Promise<PaginatedResponse<any>> {
+    const page = pagination?.page || 1;
+    const pageSize = Math.min(pagination?.pageSize || 20, 100);
+    const skip = (page - 1) * pageSize;
+
+    const where: any = { organizationId };
+
+    // Busca textual por SKU ou Descrição (ILIKE case-insensitive)
+    if (pagination?.search) {
+      where.OR = [
+        { sku: { contains: pagination.search, mode: 'insensitive' } },
+        { descricao: { contains: pagination.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const orderBy: any = {};
+    if (pagination?.sortBy) {
+      orderBy[pagination.sortBy] = pagination.sortOrder || 'desc';
+    } else {
+      orderBy.createdAt = 'desc';
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.item.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: { supplier: true },
+        orderBy,
+      }),
+      this.prisma.item.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
   }
 
   async findCritical(organizationId: string) {
@@ -120,6 +157,7 @@ export class ItemsService {
     motivo: string,
     organizationId: string,
     responsavel: string,
+    actorUserId: string,
   ) {
     const item = await this.findOne(id, organizationId);
 
@@ -156,40 +194,194 @@ export class ItemsService {
       }),
     ]);
 
+    await this.prisma.auditLog.create({
+      data: {
+        actorUserId,
+        action: 'UPDATE',
+        entity: 'Item',
+        entityId: id,
+        before: JSON.stringify({ saldo: saldoAntes }),
+        after: JSON.stringify({ saldo: saldoDepois, movementId: movement.id, tipo, quantidade: Math.abs(quantidade), motivo }),
+        organizationId,
+      },
+    });
+
     return { movement, item: updatedItem };
   }
 
-  async analyze(organizationId: string) {
+  async analyze(organizationId: string, actorUserId: string) {
+    // OBS: este método é chamado pelo Web no botão "Analisar Estoque".
+    // Requisito do MVP: gerar ALERTAS e SUGESTÕES persistidas.
+
     const items = await this.prisma.item.findMany({
       where: { organizationId },
       include: { supplier: true },
     });
 
-    const suggestions = items
-      .filter(item => item.saldo <= item.minimo)
-      .map(item => {
-        const falta = item.minimo - item.saldo;
-        const sugestaoCompra = Math.max(falta, item.maximo - item.saldo);
+    const critical = items.filter((item) => item.saldo <= item.minimo);
+    const criticalIds = new Set(critical.map((i) => i.id));
 
-        return {
+    const beforeCounts = await this.prisma.$transaction([
+      this.prisma.inventoryAlert.count({ where: { organizationId, status: 'OPEN' } }),
+      this.prisma.purchaseSuggestion.count({ where: { organizationId, status: 'OPEN' } }),
+    ]);
+
+    await this.prisma.$transaction(async (tx) => {
+      // Upsert OPEN alerts/suggestions para itens críticos
+      for (const item of critical) {
+        const falta = Math.max(item.minimo - item.saldo, 0);
+        const sugestaoCompra = Math.max(1, item.maximo - item.saldo);
+        const custoEstimado = sugestaoCompra * item.custoUnitario;
+
+        const severity =
+          item.saldo === 0 || falta >= item.minimo
+            ? 'HIGH'
+            : falta > 0
+              ? 'MEDIUM'
+              : 'LOW';
+
+        const reason = `Saldo (${item.saldo}) <= mínimo (${item.minimo}). Falta: ${falta}.`;
+        const snapshot = JSON.stringify({
           itemId: item.id,
           sku: item.sku,
           descricao: item.descricao,
-          saldoAtual: item.saldo,
+          saldo: item.saldo,
           minimo: item.minimo,
           maximo: item.maximo,
-          falta,
-          sugestaoCompra,
-          custoEstimado: sugestaoCompra * item.custoUnitario,
-          supplier: item.supplier,
-        };
-      });
+          leadTimeDays: item.leadTimeDays,
+          custoUnitario: item.custoUnitario,
+          supplierId: item.supplierId,
+          analyzedAt: new Date().toISOString(),
+        });
+
+        await tx.inventoryAlert.upsert({
+          where: {
+            organizationId_itemId_status: {
+              organizationId,
+              itemId: item.id,
+              status: 'OPEN',
+            },
+          },
+          create: {
+            organizationId,
+            itemId: item.id,
+            status: 'OPEN',
+            severity,
+            reason,
+            snapshot,
+          },
+          update: {
+            severity,
+            reason,
+            snapshot,
+            updatedAt: new Date(),
+          },
+        });
+
+        await tx.purchaseSuggestion.upsert({
+          where: {
+            organizationId_itemId_status: {
+              organizationId,
+              itemId: item.id,
+              status: 'OPEN',
+            },
+          },
+          create: {
+            organizationId,
+            itemId: item.id,
+            supplierId: item.supplierId,
+            status: 'OPEN',
+            suggestedQty: sugestaoCompra,
+            unitCost: item.custoUnitario,
+            estimatedTotal: custoEstimado,
+            reason,
+            snapshot,
+          },
+          update: {
+            supplierId: item.supplierId,
+            suggestedQty: sugestaoCompra,
+            unitCost: item.custoUnitario,
+            estimatedTotal: custoEstimado,
+            reason,
+            snapshot,
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      // Fecha alertas/sugestões OPEN que não são mais críticos (evita lixo/stale)
+      const nonCriticalIds = items.filter((i) => !criticalIds.has(i.id)).map((i) => i.id);
+      if (nonCriticalIds.length > 0) {
+        await tx.inventoryAlert.updateMany({
+          where: { organizationId, status: 'OPEN', itemId: { in: nonCriticalIds } },
+          data: { status: 'CLOSED' },
+        });
+        await tx.purchaseSuggestion.updateMany({
+          where: { organizationId, status: 'OPEN', itemId: { in: nonCriticalIds } },
+          data: { status: 'IGNORED' },
+        });
+      }
+    });
+
+    const openSuggestions = await this.prisma.purchaseSuggestion.findMany({
+      where: { organizationId, status: 'OPEN' },
+      include: { item: true, supplier: true },
+      orderBy: { estimatedTotal: 'desc' },
+    });
+
+    const suggestions = openSuggestions.map((s) => {
+      const item = s.item;
+      const falta = Math.max(item.minimo - item.saldo, 0);
+      return {
+        suggestionId: s.id,
+        itemId: item.id,
+        sku: item.sku,
+        descricao: item.descricao,
+        saldoAtual: item.saldo,
+        minimo: item.minimo,
+        maximo: item.maximo,
+        falta,
+        sugestaoCompra: s.suggestedQty,
+        custoEstimado: s.estimatedTotal,
+        supplier: s.supplier,
+      };
+    });
+
+    const afterCounts = await this.prisma.$transaction([
+      this.prisma.inventoryAlert.count({ where: { organizationId, status: 'OPEN' } }),
+      this.prisma.purchaseSuggestion.count({ where: { organizationId, status: 'OPEN' } }),
+    ]);
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorUserId,
+        action: 'ANALYZE_INVENTORY',
+        entity: 'Inventory',
+        entityId: 'analysis',
+        before: JSON.stringify({
+          alertsOpen: beforeCounts[0],
+          suggestionsOpen: beforeCounts[1],
+        }),
+        after: JSON.stringify({
+          criticalItems: critical.length,
+          alertsOpen: afterCounts[0],
+          suggestionsOpen: afterCounts[1],
+        }),
+        organizationId,
+      },
+    });
 
     return {
       totalItems: items.length,
-      itemsCriticos: suggestions.length,
+      itemsCriticos: critical.length,
       valorTotalEstimado: suggestions.reduce((sum, s) => sum + s.custoEstimado, 0),
       suggestions,
+      persisted: {
+        alertsOpenBefore: beforeCounts[0],
+        suggestionsOpenBefore: beforeCounts[1],
+        alertsOpenAfter: afterCounts[0],
+        suggestionsOpenAfter: afterCounts[1],
+      },
     };
   }
 

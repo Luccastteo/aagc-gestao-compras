@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { authApi } from '@/lib/api';
+import { authApi, tokenStorage } from '@/lib/api';
 import { Bot, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
@@ -35,8 +35,7 @@ export default function LoginPage() {
       }
 
       // Save tokens and user data
-      localStorage.setItem('accessToken', result.accessToken);
-      localStorage.setItem('refreshToken', result.refreshToken);
+      await tokenStorage.set({ accessToken: result.accessToken, refreshToken: result.refreshToken });
       localStorage.setItem('userId', result.user.userId);
       localStorage.setItem('user', JSON.stringify(result.user));
       
@@ -70,10 +69,11 @@ export default function LoginPage() {
           
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="text-sm font-medium mb-2 block">E-mail</label>
+              <label htmlFor="login-email" className="text-sm font-medium mb-2 block">E-mail</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
+                  id="login-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -85,10 +85,11 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium mb-2 block">Senha</label>
+              <label htmlFor="login-password" className="text-sm font-medium mb-2 block">Senha</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -100,6 +101,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>

@@ -19,10 +19,13 @@ export default function InventoryPage() {
   const [importResult, setImportResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: items, isLoading } = useQuery({
+  const { data: itemsResponse, isLoading } = useQuery({
     queryKey: ['items'],
     queryFn: itemsApi.getAll,
   });
+
+  // `GET /items` é paginado no backend (retorna { data, pagination })
+  const items = itemsResponse?.data || [];
 
   const { data: analysis, isLoading: isAnalyzing } = useQuery({
     queryKey: ['items', 'analyze'],
@@ -49,7 +52,13 @@ export default function InventoryPage() {
     },
     onError: (error: any) => {
       console.error('Import error:', error);
-      setImportError(error.response?.data?.message || error.message || 'Erro ao importar dados');
+      const apiMessage = error.response?.data?.message;
+      const status = error.response?.status;
+      const msg =
+        Array.isArray(apiMessage)
+          ? apiMessage.join('\n')
+          : apiMessage || error.message || 'Erro ao importar dados';
+      setImportError(status ? `(${status}) ${msg}` : msg);
     },
   });
 
@@ -229,7 +238,7 @@ export default function InventoryPage() {
     reader.onload = (event) => {
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array', defval: '' });
+        const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
@@ -277,7 +286,19 @@ export default function InventoryPage() {
         
         setImportData(normalizedData);
         setImportResult(null);
-        setImportError(null);
+        
+        // Detecta se há colunas extras (não esperadas)
+        const firstRow = normalizedData[0] || {};
+        const allowedColumns = ['SKU', 'Descricao', 'Estoque_Atual', 'Estoque_Minimo', 'Estoque_Maximo', 'Custo_Unitario', 'Lead_Time_Dias', 'Localizacao', 'Observacoes'];
+        const actualColumns = Object.keys(firstRow);
+        const extraColumns = actualColumns.filter(col => !allowedColumns.includes(col));
+        
+        if (extraColumns.length > 0) {
+          setImportError(`ℹ️ Aviso: Seu Excel possui ${extraColumns.length} coluna(s) extra(s) que serão ignoradas. Somente as colunas do template serão importadas: ${allowedColumns.join(', ')}.`);
+        } else {
+          setImportError(null);
+        }
+        
         setShowImportModal(true);
       } catch (error) {
         console.error('Parse error:', error);
@@ -295,17 +316,31 @@ export default function InventoryPage() {
   // Execute import
   const handleImport = () => {
     // Filtra apenas itens válidos (com SKU E Descrição não vazios)
-    const validItems = importData.filter(row => {
-      const sku = row.SKU ? String(row.SKU).trim() : '';
-      const desc = row.Descricao ? String(row.Descricao).trim() : '';
-      return sku !== '' && desc !== '' && sku !== 'undefined' && desc !== 'undefined';
-    });
+    // e mapeia para o formato esperado pela API (somente campos permitidos)
+    const validItems = importData
+      .filter(row => {
+        const sku = row.SKU ? String(row.SKU).trim() : '';
+        const desc = row.Descricao ? String(row.Descricao).trim() : '';
+        return sku !== '' && desc !== '' && sku !== 'undefined' && desc !== 'undefined';
+      })
+      .map(row => ({
+        SKU: String(row.SKU || '').trim(),
+        Descricao: String(row.Descricao || '').trim(),
+        Estoque_Atual: Number(row.Estoque_Atual || 0),
+        Estoque_Minimo: Number(row.Estoque_Minimo || 0),
+        Estoque_Maximo: Number(row.Estoque_Maximo || 100),
+        Custo_Unitario: Number(row.Custo_Unitario || 0),
+        Lead_Time_Dias: Number(row.Lead_Time_Dias || 7),
+        Localizacao: String(row.Localizacao || ''),
+        ...(row.Observacoes && { Observacoes: String(row.Observacoes) })
+      }));
     
     if (validItems.length === 0) {
-      setImportError('Nenhum item válido para importar. Verifique se todos os itens têm SKU e Descrição preenchidos.');
+      setImportError('⚠️ Nenhum item válido para importar. Verifique se todos os itens têm SKU e Descrição preenchidos.');
       return;
     }
     
+    // Limpa avisos anteriores ao iniciar a importação
     setImportError(null);
     importMutation.mutate(validItems);
   };
@@ -457,14 +492,14 @@ export default function InventoryPage() {
             </tr>
           </thead>
           <tbody>
-            {items?.length === 0 ? (
+            {items.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                  Nenhum item cadastrado. Use o botão "Novo Item" ou importe via Excel.
+                  Nenhum item cadastrado. Use o botão &quot;Novo Item&quot; ou importe via Excel.
                 </td>
               </tr>
             ) : (
-              items?.map((item: any) => {
+              items.map((item: any) => {
                 const isCritical = item.saldo <= item.minimo;
                 return (
                   <tr key={item.id} className="border-t border-border hover:bg-secondary/50">
@@ -512,50 +547,50 @@ export default function InventoryPage() {
             </div>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="text-sm font-medium">SKU *</label>
-                <input name="sku" required className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                <label htmlFor="item-sku" className="text-sm font-medium">SKU *</label>
+                <input id="item-sku" name="sku" required className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
               </div>
               <div>
-                <label className="text-sm font-medium">Descrição *</label>
-                <input name="descricao" required className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                <label htmlFor="item-descricao" className="text-sm font-medium">Descrição *</label>
+                <input id="item-descricao" name="descricao" required className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Categoria</label>
-                  <input name="categoria" className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                  <label htmlFor="item-categoria" className="text-sm font-medium">Categoria</label>
+                  <input id="item-categoria" name="categoria" className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Unidade</label>
-                  <input name="unidade" defaultValue="UN" className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                  <label htmlFor="item-unidade" className="text-sm font-medium">Unidade</label>
+                  <input id="item-unidade" name="unidade" defaultValue="UN" className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Estoque</label>
-                  <input name="saldo" type="number" defaultValue={0} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                  <label htmlFor="item-saldo" className="text-sm font-medium">Estoque</label>
+                  <input id="item-saldo" name="saldo" type="number" defaultValue={0} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Mínimo</label>
-                  <input name="minimo" type="number" defaultValue={5} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                  <label htmlFor="item-minimo" className="text-sm font-medium">Mínimo</label>
+                  <input id="item-minimo" name="minimo" type="number" defaultValue={5} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Máximo</label>
-                  <input name="maximo" type="number" defaultValue={20} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                  <label htmlFor="item-maximo" className="text-sm font-medium">Máximo</label>
+                  <input id="item-maximo" name="maximo" type="number" defaultValue={20} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Custo Unitário</label>
-                  <input name="custoUnitario" type="number" step="0.01" defaultValue={0} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                  <label htmlFor="item-custoUnitario" className="text-sm font-medium">Custo Unitário</label>
+                  <input id="item-custoUnitario" name="custoUnitario" type="number" step="0.01" defaultValue={0} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Lead Time (dias)</label>
-                  <input name="leadTimeDays" type="number" defaultValue={7} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                  <label htmlFor="item-leadTimeDays" className="text-sm font-medium">Lead Time (dias)</label>
+                  <input id="item-leadTimeDays" name="leadTimeDays" type="number" defaultValue={7} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
                 </div>
               </div>
               <div>
-                <label className="text-sm font-medium">Localização</label>
-                <input name="localizacao" className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                <label htmlFor="item-localizacao" className="text-sm font-medium">Localização</label>
+                <input id="item-localizacao" name="localizacao" className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
               </div>
               <div className="flex gap-2 justify-end">
                 <button
@@ -665,8 +700,20 @@ export default function InventoryPage() {
                 </div>
 
                 {importError && (
-                  <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-                    <p className="text-red-500 text-sm flex items-center gap-2">
+                  <div className={`p-4 rounded-lg ${
+                    importError.startsWith('ℹ️') 
+                      ? 'bg-blue-500/10 border border-blue-500/30' 
+                      : importError.startsWith('⚠️')
+                      ? 'bg-yellow-500/10 border border-yellow-500/30'
+                      : 'bg-red-500/10 border border-red-500/30'
+                  }`}>
+                    <p className={`text-sm flex items-center gap-2 ${
+                      importError.startsWith('ℹ️') 
+                        ? 'text-blue-500' 
+                        : importError.startsWith('⚠️')
+                        ? 'text-yellow-600'
+                        : 'text-red-500'
+                    }`}>
                       <AlertCircle className="w-4 h-4" />
                       {importError}
                     </p>
@@ -733,6 +780,7 @@ export default function InventoryPage() {
                     Cancelar
                   </button>
                   <button
+                    type="button"
                     onClick={handleImport}
                     disabled={importMutation.isPending || importData.filter(r => r.SKU && r.Descricao).length === 0}
                     className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"

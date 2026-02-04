@@ -40,3 +40,6 @@ apps/api/prisma/dev.db-journal
 # Docker
 postgres-data/
 redis-data/
+
+# Local helper files
+PID

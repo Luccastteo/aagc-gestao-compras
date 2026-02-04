@@ -1,21 +1,74 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { POStatus } from '@prisma/client';
+import { PaginationDto, PaginatedResponse } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class PurchaseOrdersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(organizationId: string) {
-    return this.prisma.purchaseOrder.findMany({
-      where: { organizationId },
-      include: {
-        supplier: true,
-        createdBy: { select: { name: true, email: true } },
-        items: { include: { item: true } },
-      },
-      orderBy: { createdAt: 'desc' },
+  private async assertSupplierBelongsToOrg(supplierId: string, organizationId: string) {
+    const supplier = await this.prisma.supplier.findFirst({
+      where: { id: supplierId, organizationId },
     });
+    if (!supplier) {
+      throw new BadRequestException('Fornecedor inválido para esta organização');
+    }
+    return supplier;
+  }
+
+  private async assertItemBelongsToOrg(itemId: string, organizationId: string) {
+    const item = await this.prisma.item.findFirst({
+      where: { id: itemId, organizationId },
+    });
+    if (!item) {
+      throw new BadRequestException('Item inválido para esta organização');
+    }
+    return item;
+  }
+
+  async findAll(organizationId: string, pagination?: PaginationDto): Promise<PaginatedResponse<any>> {
+    const page = pagination?.page || 1;
+    const pageSize = Math.min(pagination?.pageSize || 20, 100);
+    const skip = (page - 1) * pageSize;
+
+    const where: any = { organizationId };
+
+    if (pagination?.search) {
+      where.codigo = { contains: pagination.search, mode: 'insensitive' };
+    }
+
+    const orderBy: any = {};
+    if (pagination?.sortBy) {
+      orderBy[pagination.sortBy] = pagination.sortOrder || 'desc';
+    } else {
+      orderBy.createdAt = 'desc';
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.purchaseOrder.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: {
+          supplier: true,
+          createdBy: { select: { name: true, email: true } },
+          items: { include: { item: true } },
+        },
+        orderBy,
+      }),
+      this.prisma.purchaseOrder.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
   }
 
   async findOne(id: string, organizationId: string) {
@@ -37,6 +90,9 @@ export class PurchaseOrdersService {
   }
 
   async create(data: any, organizationId: string, userId: string) {
+    // Multi-tenant enforcement: valida IDs pertencem à org.
+    await this.assertSupplierBelongsToOrg(data.supplierId, organizationId);
+
     const lastPO = await this.prisma.purchaseOrder.findFirst({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
@@ -47,54 +103,234 @@ export class PurchaseOrdersService {
 
     let valorTotal = 0;
 
-    const po = await this.prisma.purchaseOrder.create({
-      data: {
-        codigo,
-        status: 'DRAFT',
-        supplierId: data.supplierId,
-        valorTotal: 0,
-        observacoes: data.observacoes,
-        createdById: userId,
-        organizationId,
-        dataAbertura: new Date(),
-      },
-    });
+    const created = await this.prisma.$transaction(async (tx) => {
+      const po = await tx.purchaseOrder.create({
+        data: {
+          codigo,
+          status: 'DRAFT',
+          supplierId: data.supplierId,
+          valorTotal: 0,
+          observacoes: data.observacoes,
+          createdById: userId,
+          organizationId,
+          dataAbertura: new Date(),
+        },
+      });
 
-    if (data.items && data.items.length > 0) {
-      for (const item of data.items) {
-        const valorItem = item.quantidade * item.precoUnitario;
-        valorTotal += valorItem;
+      if (data.items && data.items.length > 0) {
+        for (const line of data.items) {
+          await this.assertItemBelongsToOrg(line.itemId, organizationId);
 
-        await this.prisma.purchaseOrderItem.create({
-          data: {
-            purchaseOrderId: po.id,
-            itemId: item.itemId,
-            quantidade: item.quantidade,
-            precoUnitario: item.precoUnitario,
-            valorTotal: valorItem,
-          },
+          const valorItem = line.quantidade * line.precoUnitario;
+          valorTotal += valorItem;
+
+          await tx.purchaseOrderItem.create({
+            data: {
+              purchaseOrderId: po.id,
+              itemId: line.itemId,
+              quantidade: line.quantidade,
+              precoUnitario: line.precoUnitario,
+              valorTotal: valorItem,
+            },
+          });
+        }
+
+        await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: { valorTotal },
         });
       }
 
-      await this.prisma.purchaseOrder.update({
-        where: { id: po.id },
-        data: { valorTotal },
+      const full = await tx.purchaseOrder.findFirst({
+        where: { id: po.id, organizationId },
+        include: {
+          supplier: true,
+          createdBy: { select: { name: true, email: true } },
+          approvedBy: { select: { name: true, email: true } },
+          items: { include: { item: true } },
+        },
       });
-    }
 
-    // Audit log
-    await this.prisma.auditLog.create({
-      data: {
-        actorUserId: userId,
-        action: 'CREATE',
-        entity: 'PurchaseOrder',
-        entityId: po.id,
-        after: JSON.stringify({ codigo, valorTotal }),
-        organizationId,
-      },
+      await tx.auditLog.create({
+        data: {
+          actorUserId: userId,
+          action: 'CREATE',
+          entity: 'PurchaseOrder',
+          entityId: po.id,
+          after: JSON.stringify(full),
+          organizationId,
+        },
+      });
+
+      return full!;
     });
 
-    return this.findOne(po.id, organizationId);
+    return created;
+  }
+
+  async createFromSuggestions(
+    params: { suggestionIds?: string[]; supplierId?: string },
+    organizationId: string,
+    userId: string,
+  ) {
+    const where: any = { organizationId, status: 'OPEN' };
+    if (params?.suggestionIds?.length) where.id = { in: params.suggestionIds };
+    if (params?.supplierId) where.supplierId = params.supplierId;
+
+    const suggestions = await this.prisma.purchaseSuggestion.findMany({
+      where,
+      include: { item: true, supplier: true },
+      orderBy: { estimatedTotal: 'desc' },
+    });
+
+    if (suggestions.length === 0) {
+      throw new BadRequestException('Nenhuma sugestão OPEN encontrada para gerar pedido');
+    }
+
+    // Não dá pra gerar PO sem fornecedor (schema exige supplierId).
+    const withoutSupplier = suggestions.filter((s) => !s.supplierId);
+    if (withoutSupplier.length > 0) {
+      throw new BadRequestException('Existem sugestões sem fornecedor vinculado. Ajuste o item/fornecedor e tente novamente.');
+    }
+
+    const grouped = new Map<string, typeof suggestions>();
+    for (const s of suggestions) {
+      const key = s.supplierId!;
+      const arr = grouped.get(key) || [];
+      arr.push(s);
+      grouped.set(key, arr);
+    }
+
+    const createdPOs: any[] = [];
+    const usedSuggestionIds: string[] = [];
+
+    for (const [supplierId, group] of grouped.entries()) {
+      // Multi-tenant enforcement (supplierId)
+      await this.assertSupplierBelongsToOrg(supplierId, organizationId);
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Gera código sequencial por org
+        const lastPO = await tx.purchaseOrder.findFirst({
+          where: { organizationId },
+          orderBy: { createdAt: 'desc' },
+        });
+        const count = lastPO ? parseInt(lastPO.codigo.split('-').pop() || '0') + 1 : 1;
+        const codigo = `PO-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`;
+
+        let valorTotal = 0;
+
+        const po = await tx.purchaseOrder.create({
+          data: {
+            codigo,
+            status: 'DRAFT',
+            supplierId,
+            valorTotal: 0,
+            observacoes: `Gerado automaticamente a partir de sugestões (${group.length} itens).`,
+            createdById: userId,
+            organizationId,
+            dataAbertura: new Date(),
+          },
+        });
+
+        for (const s of group) {
+          // Multi-tenant enforcement (itemId)
+          await this.assertItemBelongsToOrg(s.itemId, organizationId);
+
+          const lineTotal = s.suggestedQty * s.unitCost;
+          valorTotal += lineTotal;
+
+          await tx.purchaseOrderItem.create({
+            data: {
+              purchaseOrderId: po.id,
+              itemId: s.itemId,
+              quantidade: s.suggestedQty,
+              precoUnitario: s.unitCost,
+              valorTotal: lineTotal,
+            },
+          });
+        }
+
+        await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: { valorTotal },
+        });
+
+        // Marca sugestões como USED e vincula ao PO
+        const ids = group.map((s) => s.id);
+        await tx.purchaseSuggestion.updateMany({
+          where: { id: { in: ids }, organizationId, status: 'OPEN' },
+          data: { status: 'USED', purchaseOrderId: po.id },
+        });
+
+        const full = await tx.purchaseOrder.findFirst({
+          where: { id: po.id, organizationId },
+          include: {
+            supplier: true,
+            createdBy: { select: { name: true, email: true } },
+            approvedBy: { select: { name: true, email: true } },
+            items: { include: { item: true } },
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            actorUserId: userId,
+            action: 'CREATE_FROM_SUGGESTIONS',
+            entity: 'PurchaseOrder',
+            entityId: po.id,
+            after: JSON.stringify({
+              purchaseOrder: full,
+              suggestionIds: ids,
+            }),
+            organizationId,
+          },
+        });
+
+        // Opcional: cria card no kanban
+        const board = await tx.kanbanBoard.findFirst({ where: { organizationId } });
+        if (board) {
+          const maxPosicao = await tx.kanbanCard.findFirst({
+            where: { boardId: board.id, status: 'TODO' },
+            orderBy: { posicao: 'desc' },
+          });
+
+          const card = await tx.kanbanCard.create({
+            data: {
+              titulo: `Pedido ${codigo} (rascunho)`,
+              descricao: `Gerado automaticamente a partir de sugestões (${group.length} itens).`,
+              status: 'TODO',
+              posicao: maxPosicao ? maxPosicao.posicao + 1 : 0,
+              purchaseOrderId: po.id,
+              boardId: board.id,
+              createdById: userId,
+              organizationId,
+            },
+          });
+
+          await tx.auditLog.create({
+            data: {
+              actorUserId: userId,
+              action: 'CREATE',
+              entity: 'KanbanCard',
+              entityId: card.id,
+              after: JSON.stringify(card),
+              organizationId,
+            },
+          });
+        }
+
+        return { po: full!, suggestionIds: ids };
+      });
+
+      createdPOs.push(result.po);
+      usedSuggestionIds.push(...result.suggestionIds);
+    }
+
+    return {
+      created: createdPOs.length,
+      purchaseOrders: createdPOs,
+      usedSuggestionIds,
+    };
   }
 
   async approve(id: string, organizationId: string, userId: string) {
@@ -111,11 +347,9 @@ export class PurchaseOrdersService {
         approvedById: userId,
         dataAprovacao: new Date(),
       },
-      include: {
-        supplier: true,
-        items: { include: { item: true } },
-      },
     });
+
+    const after = await this.findOne(updated.id, organizationId);
 
     await this.prisma.auditLog.create({
       data: {
@@ -123,13 +357,13 @@ export class PurchaseOrdersService {
         action: 'APPROVE',
         entity: 'PurchaseOrder',
         entityId: id,
-        before: JSON.stringify({ status: 'DRAFT' }),
-        after: JSON.stringify({ status: 'APPROVED' }),
+        before: JSON.stringify(po),
+        after: JSON.stringify(after),
         organizationId,
       },
     });
 
-    return updated;
+    return after;
   }
 
   async send(id: string, organizationId: string, userId: string) {
@@ -149,16 +383,20 @@ export class PurchaseOrdersService {
     });
 
     // Simulated email/WhatsApp
-    await this.prisma.commsLog.create({
+    const comm = await this.prisma.commsLog.create({
       data: {
         tipo: 'EMAIL',
         destinatario: po.supplier.email || 'N/A',
         assunto: `Pedido de Compra ${po.codigo}`,
         mensagem: `Pedido enviado para ${po.supplier.nome}. Valor total: R$ ${po.valorTotal}`,
         status: 'SIMULATED',
+        entity: 'PurchaseOrder',
+        entityId: po.id,
         organizationId,
       },
     });
+
+    const after = await this.findOne(updated.id, organizationId);
 
     await this.prisma.auditLog.create({
       data: {
@@ -166,12 +404,13 @@ export class PurchaseOrdersService {
         action: 'SEND',
         entity: 'PurchaseOrder',
         entityId: id,
-        after: JSON.stringify({ status: 'SENT' }),
+        before: JSON.stringify(po),
+        after: JSON.stringify({ purchaseOrder: after, commsLogId: comm.id }),
         organizationId,
       },
     });
 
-    return updated;
+    return after;
   }
 
   async receive(id: string, organizationId: string, userId: string) {
@@ -181,36 +420,74 @@ export class PurchaseOrdersService {
       throw new BadRequestException('Only SENT orders can be received');
     }
 
-    // Update stock
-    for (const poItem of po.items) {
-      const item = await this.prisma.item.findUnique({ where: { id: poItem.itemId } });
-      if (item) {
-        await this.prisma.movement.create({
+    const movementsSummary: Array<{
+      itemId: string;
+      sku?: string;
+      saldoAntes: number;
+      saldoDepois: number;
+      quantidade: number;
+      movementId?: string;
+    }> = [];
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Update stock
+      for (const poItem of po.items) {
+        const item = await tx.item.findFirst({ where: { id: poItem.itemId, organizationId } });
+        if (!item) continue;
+
+        const saldoAntes = item.saldo;
+        const saldoDepois = item.saldo + poItem.quantidade;
+
+        const movement = await tx.movement.create({
           data: {
             itemId: item.id,
             tipo: 'ENTRADA',
             quantidade: poItem.quantidade,
-            saldoAntes: item.saldo,
-            saldoDepois: item.saldo + poItem.quantidade,
+            saldoAntes,
+            saldoDepois,
             motivo: `Recebimento PO ${po.codigo}`,
             responsavel: 'System',
           },
         });
 
-        await this.prisma.item.update({
+        await tx.item.update({
           where: { id: item.id },
-          data: { saldo: item.saldo + poItem.quantidade },
+          data: { saldo: saldoDepois },
+        });
+
+        movementsSummary.push({
+          itemId: item.id,
+          sku: item.sku,
+          saldoAntes,
+          saldoDepois,
+          quantidade: poItem.quantidade,
+          movementId: movement.id,
+        });
+
+        // Audit por item (estoque)
+        await tx.auditLog.create({
+          data: {
+            actorUserId: userId,
+            action: 'UPDATE',
+            entity: 'Item',
+            entityId: item.id,
+            before: JSON.stringify({ saldo: saldoAntes }),
+            after: JSON.stringify({ saldo: saldoDepois, movementId: movement.id, motivo: `Recebimento PO ${po.codigo}` }),
+            organizationId,
+          },
         });
       }
-    }
 
-    const updated = await this.prisma.purchaseOrder.update({
-      where: { id },
-      data: {
-        status: 'DELIVERED',
-        dataRecebimento: new Date(),
-      },
+      return tx.purchaseOrder.update({
+        where: { id },
+        data: {
+          status: 'DELIVERED',
+          dataRecebimento: new Date(),
+        },
+      });
     });
+
+    const after = await this.findOne(updated.id, organizationId);
 
     await this.prisma.auditLog.create({
       data: {
@@ -218,11 +495,12 @@ export class PurchaseOrdersService {
         action: 'RECEIVE',
         entity: 'PurchaseOrder',
         entityId: id,
-        after: JSON.stringify({ status: 'DELIVERED' }),
+        before: JSON.stringify(po),
+        after: JSON.stringify({ purchaseOrder: after, movements: movementsSummary }),
         organizationId,
       },
     });
 
-    return updated;
+    return after;
   }
 }

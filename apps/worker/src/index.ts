@@ -4,126 +4,225 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const connection = new Redis({
-  host: 'localhost',
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
 
-// Queue definitions
-const inventoryQueue = new Queue('inventory-check', { connection });
-const poFollowupQueue = new Queue('po-followup', { connection });
+// Requisito: jobs com nomes exatos
+const inventoryQueue = new Queue('inventory_daily_check', { connection });
+const poFollowupQueue = new Queue('po_followup', { connection });
 
-// Worker: Daily Inventory Check
-const inventoryWorker = new Worker(
-  'inventory-check',
-  async (job) => {
-    console.log(`[InventoryCheck] Processing job for org: ${job.data.orgId}`);
+function nowIso() {
+  return new Date().toISOString();
+}
 
-    const { orgId } = job.data;
+async function upsertAlertsAndSuggestions(orgId: string) {
+  const items = await prisma.item.findMany({
+    where: { organizationId: orgId },
+    include: { supplier: true },
+  });
 
-    const items = await prisma.item.findMany({
-      where: { organizationId: orgId },
-      include: { supplier: true },
+  const critical = items.filter((i) => i.saldo <= i.minimo);
+  const criticalIds = new Set(critical.map((i) => i.id));
+
+  for (const item of critical) {
+    const falta = Math.max(item.minimo - item.saldo, 0);
+    const suggestedQty = Math.max(1, item.maximo - item.saldo);
+    const estimatedTotal = suggestedQty * item.custoUnitario;
+
+    const severity =
+      item.saldo === 0 || falta >= item.minimo
+        ? 'HIGH'
+        : falta > 0
+          ? 'MEDIUM'
+          : 'LOW';
+
+    const reason = `Saldo (${item.saldo}) <= mínimo (${item.minimo}). Falta: ${falta}.`;
+    const snapshot = JSON.stringify({
+      itemId: item.id,
+      sku: item.sku,
+      descricao: item.descricao,
+      saldo: item.saldo,
+      minimo: item.minimo,
+      maximo: item.maximo,
+      leadTimeDays: item.leadTimeDays,
+      custoUnitario: item.custoUnitario,
+      supplierId: item.supplierId,
+      analyzedAt: nowIso(),
+      source: 'worker',
     });
 
-    const criticalItems = items.filter((item) => item.saldo <= item.minimo);
-
-    console.log(`[InventoryCheck] Found ${criticalItems.length} critical items`);
-
-    if (criticalItems.length > 0) {
-      const board = await prisma.kanbanBoard.findFirst({
-        where: { organizationId: orgId },
-      });
-
-      if (board) {
-        for (const item of criticalItems.slice(0, 5)) {
-          const existingCard = await prisma.kanbanCard.findFirst({
-            where: {
-              boardId: board.id,
-              titulo: { contains: item.sku },
-              status: { not: 'DONE' },
-            },
-          });
-
-          if (!existingCard) {
-            const operator = await prisma.user.findFirst({
-              where: { organizationId: orgId, role: 'OPERATOR' },
-            });
-
-            if (operator) {
-              await prisma.kanbanCard.create({
-                data: {
-                  titulo: `⚠️ Estoque Crítico: ${item.sku}`,
-                  descricao: `${item.descricao} - Saldo: ${item.saldo} / Mínimo: ${item.minimo}`,
-                  status: 'TODO',
-                  posicao: 0,
-                  boardId: board.id,
-                  createdById: operator.id,
-                  organizationId: orgId,
-                },
-              });
-
-              console.log(`[InventoryCheck] Created kanban card for ${item.sku}`);
-            }
-          }
-        }
-      }
-
-      await prisma.auditLog.create({
-        data: {
-          actorUserId: 'SYSTEM',
-          action: 'ALERT',
-          entity: 'Inventory',
-          entityId: 'daily-check',
-          after: JSON.stringify({ criticalItems: criticalItems.length }),
+    await prisma.inventoryAlert.upsert({
+      where: {
+        organizationId_itemId_status: {
           organizationId: orgId,
+          itemId: item.id,
+          status: 'OPEN',
         },
-      });
-    }
+      },
+      create: {
+        organizationId: orgId,
+        itemId: item.id,
+        status: 'OPEN',
+        severity,
+        reason,
+        snapshot,
+      },
+      update: {
+        severity,
+        reason,
+        snapshot,
+        updatedAt: new Date(),
+      },
+    });
 
-    return { processed: items.length, critical: criticalItems.length };
+    await prisma.purchaseSuggestion.upsert({
+      where: {
+        organizationId_itemId_status: {
+          organizationId: orgId,
+          itemId: item.id,
+          status: 'OPEN',
+        },
+      },
+      create: {
+        organizationId: orgId,
+        itemId: item.id,
+        supplierId: item.supplierId,
+        status: 'OPEN',
+        suggestedQty,
+        unitCost: item.custoUnitario,
+        estimatedTotal,
+        reason,
+        snapshot,
+      },
+      update: {
+        supplierId: item.supplierId,
+        suggestedQty,
+        unitCost: item.custoUnitario,
+        estimatedTotal,
+        reason,
+        snapshot,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  const nonCriticalIds = items.filter((i) => !criticalIds.has(i.id)).map((i) => i.id);
+  if (nonCriticalIds.length > 0) {
+    await prisma.inventoryAlert.updateMany({
+      where: { organizationId: orgId, status: 'OPEN', itemId: { in: nonCriticalIds } },
+      data: { status: 'CLOSED' },
+    });
+    await prisma.purchaseSuggestion.updateMany({
+      where: { organizationId: orgId, status: 'OPEN', itemId: { in: nonCriticalIds } },
+      data: { status: 'IGNORED' },
+    });
+  }
+
+  return { processed: items.length, critical: critical.length };
+}
+
+// Job 1: inventory_daily_check (DEV: 60s)
+const inventoryWorker = new Worker(
+  'inventory_daily_check',
+  async (job) => {
+    const { orgId } = job.data as { orgId: string };
+    console.log(`[inventory_daily_check] org=${orgId} job=${job.id}`);
+
+    const before = await Promise.all([
+      prisma.inventoryAlert.count({ where: { organizationId: orgId, status: 'OPEN' } }),
+      prisma.purchaseSuggestion.count({ where: { organizationId: orgId, status: 'OPEN' } }),
+    ]);
+
+    const result = await upsertAlertsAndSuggestions(orgId);
+
+    const after = await Promise.all([
+      prisma.inventoryAlert.count({ where: { organizationId: orgId, status: 'OPEN' } }),
+      prisma.purchaseSuggestion.count({ where: { organizationId: orgId, status: 'OPEN' } }),
+    ]);
+
+    await prisma.auditLog.create({
+      data: {
+        actorUserId: null,
+        action: 'JOB_INVENTORY_DAILY_CHECK',
+        entity: 'Inventory',
+        entityId: `inventory_daily_check:${orgId}`,
+        before: JSON.stringify({ alertsOpen: before[0], suggestionsOpen: before[1] }),
+        after: JSON.stringify({ ...result, alertsOpen: after[0], suggestionsOpen: after[1] }),
+        organizationId: orgId,
+      },
+    });
+
+    return result;
   },
   { connection },
 );
 
-// Worker: PO Follow-up
+// Job 2: po_followup (DEV: 60s)
 const poFollowupWorker = new Worker(
-  'po-followup',
+  'po_followup',
   async (job) => {
-    console.log(`[POFollowup] Processing job for org: ${job.data.orgId}`);
+    const { orgId } = job.data as { orgId: string };
+    console.log(`[po_followup] org=${orgId} job=${job.id}`);
 
-    const { orgId } = job.data;
-
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24h ago
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const pendingPOs = await prisma.purchaseOrder.findMany({
       where: {
         organizationId: orgId,
         status: 'SENT',
-        dataEnvio: { lt: cutoff },
+        updatedAt: { lt: cutoff }, // "sem update > 24h"
       },
       include: { supplier: true },
+      orderBy: { updatedAt: 'asc' },
+      take: 50,
     });
 
-    console.log(`[POFollowup] Found ${pendingPOs.length} pending POs > 24h`);
+    let created = 0;
 
     for (const po of pendingPOs) {
-      await prisma.commsLog.create({
+      // Idempotência: não criar follow-up se já houve follow-up nas últimas 24h
+      const existing = await prisma.commsLog.findFirst({
+        where: {
+          organizationId: orgId,
+          entity: 'PurchaseOrder',
+          entityId: po.id,
+          tipo: 'WHATSAPP',
+          assunto: { startsWith: 'Follow-up' },
+          createdAt: { gt: cutoff },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (existing) continue;
+
+      const comm = await prisma.commsLog.create({
         data: {
           tipo: 'WHATSAPP',
           destinatario: po.supplier.whatsapp || po.supplier.telefone || 'N/A',
           assunto: `Follow-up ${po.codigo}`,
-          mensagem: `Pedido ${po.codigo} aguardando confirmação há mais de 24h. Fornecedor: ${po.supplier.nome}`,
+          mensagem: `Pedido ${po.codigo} sem atualização há >24h. Fornecedor: ${po.supplier.nome}. (SIMULADO)`,
           status: 'SIMULATED',
+          entity: 'PurchaseOrder',
+          entityId: po.id,
           organizationId: orgId,
         },
       });
 
-      console.log(`[POFollowup] Logged follow-up for PO ${po.codigo}`);
+      await prisma.auditLog.create({
+        data: {
+          actorUserId: null,
+          action: 'JOB_PO_FOLLOWUP',
+          entity: 'CommsLog',
+          entityId: comm.id,
+          after: JSON.stringify({ purchaseOrderId: po.id, poCode: po.codigo, commsLogId: comm.id }),
+          organizationId: orgId,
+        },
+      });
+
+      created++;
     }
 
-    return { processed: pendingPOs.length };
+    return { processed: pendingPOs.length, followupsCreated: created };
   },
   { connection },
 );
@@ -157,27 +256,25 @@ async function setupScheduledJobs() {
   });
 
   for (const org of orgs) {
-    // Inventory check
-    // DEV: every 60s for testing | PROD: daily at 8 AM
     await inventoryQueue.add(
-      'daily-check',
+      'run',
       { orgId: org.id },
       {
-        repeat: isDev
-          ? { every: 60000 } // Every 60 seconds in DEV
-          : { pattern: '0 8 * * *' }, // Every day at 8 AM in PROD
+        jobId: `inventory_daily_check:${org.id}`,
+        repeat: isDev ? { every: 60000 } : { pattern: '0 8 * * *' },
+        removeOnComplete: true,
+        removeOnFail: 1000,
       },
     );
 
-    // PO follow-up
-    // DEV: every 60s for testing | PROD: every 4 hours
     await poFollowupQueue.add(
-      'followup',
+      'run',
       { orgId: org.id },
       {
-        repeat: isDev
-          ? { every: 60000 } // Every 60 seconds in DEV
-          : { pattern: '0 */4 * * *' }, // Every 4 hours in PROD
+        jobId: `po_followup:${org.id}`,
+        repeat: isDev ? { every: 60000 } : { pattern: '0 */4 * * *' },
+        removeOnComplete: true,
+        removeOnFail: 1000,
       },
     );
   }
