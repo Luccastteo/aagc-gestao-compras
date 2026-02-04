@@ -93,14 +93,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-secondary text-foreground'
-                    : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
-                }`}
+                className={`
+                  flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+                  transition-all duration-200 ease-in-out
+                  ${
+                    isActive
+                      ? 'bg-primary/10 text-primary shadow-sm border border-primary/20'
+                      : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground border border-transparent'
+                  }
+                `}
               >
-                <Icon className="w-5 h-5" />
-                {item.name}
+                <Icon 
+                  className={`w-5 h-5 transition-colors duration-200 ${
+                    isActive ? 'text-primary' : 'text-muted-foreground'
+                  }`} 
+                />
+                <span className={isActive ? 'font-semibold' : 'font-normal'}>
+                  {item.name}
+                </span>
               </Link>
             );
           })}
@@ -115,9 +125,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary/50"
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-all duration-200 border border-transparent hover:border-red-500/20"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-5 h-5 transition-colors duration-200" />
             Sair
           </button>
         </div>
