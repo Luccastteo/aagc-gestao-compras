@@ -63,14 +63,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   const navigation = [
-    { name: 'Painel', href: '/app/dashboard', icon: LayoutDashboard },
-    { name: 'Estoque', href: '/app/inventory', icon: Package },
-    { name: 'Pedidos de Compra', href: '/app/purchase-orders', icon: ShoppingCart },
-    { name: 'Fornecedores', href: '/app/suppliers', icon: Building2 },
-    { name: 'Kanban', href: '/app/kanban', icon: Kanban },
-    { name: 'Integrações', href: '/app/integrations', icon: Bell },
-    { name: 'Auditoria', href: '/app/audit', icon: FileText },
-    { name: 'Configurações', href: '/app/settings', icon: Settings },
+    { name: 'Painel', href: '/app/dashboard', icon: LayoutDashboard, color: 'blue' },
+    { name: 'Estoque', href: '/app/inventory', icon: Package, color: 'green' },
+    { name: 'Pedidos de Compra', href: '/app/purchase-orders', icon: ShoppingCart, color: 'orange' },
+    { name: 'Fornecedores', href: '/app/suppliers', icon: Building2, color: 'yellow' },
+    { name: 'Kanban', href: '/app/kanban', icon: Kanban, color: 'purple' },
+    { name: 'Integrações', href: '/app/integrations', icon: Bell, color: 'cyan' },
+    { name: 'Auditoria', href: '/app/audit', icon: FileText, color: 'pink' },
+    { name: 'Configurações', href: '/app/settings', icon: Settings, color: 'slate' },
   ];
 
   return (
@@ -79,8 +79,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="w-64 border-r border-border flex flex-col">
         <div className="p-6 border-b border-border">
           <div className="flex items-center gap-2">
-            <Bot className="w-6 h-6 text-blue-400" />
-            <h1 className="text-xl font-bold text-blue-400">AAGC</h1>
+            <Bot className="w-6 h-6 text-cyan-400" />
+            <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">AAGC</h1>
           </div>
           <p className="text-sm text-gray-400 mt-1">Gestão Inteligente de Estoque</p>
         </div>
@@ -89,6 +89,61 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {navigation.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
+            
+            // Cores específicas para cada item
+            const colorClasses = {
+              blue: {
+                bg: 'bg-blue-500/10',
+                text: 'text-blue-400',
+                border: 'border-blue-500/20',
+                icon: 'text-blue-400'
+              },
+              green: {
+                bg: 'bg-green-500/10',
+                text: 'text-green-400',
+                border: 'border-green-500/20',
+                icon: 'text-green-400'
+              },
+              orange: {
+                bg: 'bg-orange-500/10',
+                text: 'text-orange-400',
+                border: 'border-orange-500/20',
+                icon: 'text-orange-400'
+              },
+              yellow: {
+                bg: 'bg-yellow-500/10',
+                text: 'text-yellow-400',
+                border: 'border-yellow-500/20',
+                icon: 'text-yellow-400'
+              },
+              purple: {
+                bg: 'bg-purple-500/10',
+                text: 'text-purple-400',
+                border: 'border-purple-500/20',
+                icon: 'text-purple-400'
+              },
+              cyan: {
+                bg: 'bg-cyan-500/10',
+                text: 'text-cyan-400',
+                border: 'border-cyan-500/20',
+                icon: 'text-cyan-400'
+              },
+              pink: {
+                bg: 'bg-pink-500/10',
+                text: 'text-pink-400',
+                border: 'border-pink-500/20',
+                icon: 'text-pink-400'
+              },
+              slate: {
+                bg: 'bg-slate-500/10',
+                text: 'text-slate-300',
+                border: 'border-slate-500/20',
+                icon: 'text-slate-300'
+              }
+            };
+            
+            const colors = colorClasses[item.color as keyof typeof colorClasses];
+            
             return (
               <Link
                 key={item.href}
@@ -98,17 +153,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   transition-all duration-200 ease-in-out
                   ${
                     isActive
-                      ? 'bg-blue-500/10 text-blue-400 shadow-sm border border-blue-500/20'
+                      ? `${colors.bg} ${colors.text} shadow-sm border ${colors.border}`
                       : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 border border-transparent'
                   }
                 `}
               >
                 <Icon 
                   className={`w-5 h-5 transition-colors duration-200 ${
-                    isActive ? 'text-blue-400 stroke-[2]' : 'text-gray-400'
+                    isActive ? `${colors.icon} stroke-[2]` : 'text-gray-400'
                   }`} 
                 />
-                <span className={isActive ? 'font-semibold text-blue-400' : 'font-normal'}>
+                <span className={isActive ? `font-semibold ${colors.text}` : 'font-normal'}>
                   {item.name}
                 </span>
               </Link>
