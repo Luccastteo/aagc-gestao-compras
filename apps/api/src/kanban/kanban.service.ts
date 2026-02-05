@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { KanbanStatus } from '@prisma/client';
+import { CreateCardDto, UpdateCardDto } from './dto';
 
 @Injectable()
 export class KanbanService {
@@ -9,6 +10,22 @@ export class KanbanService {
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
   ) {}
+
+  async getCard(id: string, organizationId: string) {
+    const card = await this.prisma.kanbanCard.findFirst({
+      where: { id, organizationId },
+      include: {
+        purchaseOrder: { include: { supplier: true, items: { include: { item: true } } } },
+        createdBy: { select: { name: true, email: true } },
+      },
+    });
+
+    if (!card) {
+      throw new NotFoundException('Card not found');
+    }
+
+    return card;
+  }
 
   async getBoard(organizationId: string) {
     const board = await this.prisma.kanbanBoard.findFirst({
@@ -221,7 +238,7 @@ export class KanbanService {
 
   async updateCard(
     id: string,
-    data: any,
+    data: UpdateCardDto,
     organizationId: string,
     userId: string,
   ) {

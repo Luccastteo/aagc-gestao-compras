@@ -8,6 +8,7 @@ import { DecisionEngineService } from './decision-engine.service';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { SearchResult, DecisionResult, DecisionContext } from './interfaces';
 import { ChatDto, EvaluateDecisionDto } from './dto';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('ai')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -16,7 +17,113 @@ export class AIController {
     private readonly aiService: AIService,
     private readonly ragService: RAGService,
     private readonly decisionEngine: DecisionEngineService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  @Get('insights')
+  async getInsights(@GetUser() user: any) {
+    const organizationId = user.organizationId;
+
+    // Buscar alertas críticos (para demanda)
+    const alerts = await this.prisma.inventoryAlert.findMany({
+      where: { organizationId, status: { in: ['OPEN', 'PENDING'] } },
+      include: { item: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    // Buscar sugestões de compra abertas
+    const suggestions = await this.prisma.purchaseSuggestion.findMany({
+      where: { organizationId, status: 'OPEN' },
+      include: { item: true, supplier: true },
+      orderBy: { urgencyScore: 'desc' },
+      take: 10,
+    });
+
+    // Buscar performance de fornecedores
+    const supplierPerformance = await this.prisma.supplierPerformance.findMany({
+      where: { organizationId },
+      include: { supplier: true },
+      orderBy: { overallScore: 'desc' },
+      take: 10,
+    });
+
+    // Buscar decisões recentes
+    const decisions = await this.prisma.decisionLog.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    // Formatar para o frontend
+    const demandForecasts = alerts.map((alert, idx) => ({
+      itemId: alert.itemId,
+      itemName: alert.item.nome,
+      sku: alert.item.sku,
+      currentStock: alert.item.saldo,
+      predictedDemand30d: alert.item.maximo - alert.item.saldo,
+      confidence: 0.80 - (idx * 0.05),
+      trend: alert.severity === 'HIGH' ? 'UP' : 'STABLE',
+      alertType: alert.alertType,
+      severity: alert.severity,
+    }));
+
+    const supplierRankings = supplierPerformance.map((sp, idx) => ({
+      supplierId: sp.supplierId,
+      name: sp.supplier.nome,
+      score: Number(sp.overallScore) || 0,
+      rank: idx + 1,
+      factors: {
+        onTime: Number(sp.onTimeDeliveryRate) || 0,
+        quality: Number(sp.qualityScore) || 0,
+        price: Number(sp.priceCompetitiveness) || 0,
+        communication: Number(sp.responseTime) ? Math.max(0, 100 - Number(sp.responseTime)) : 70,
+      },
+      ordersDelivered: sp.ordersDelivered,
+      period: sp.period,
+    }));
+
+    const recentDecisions = decisions.map((d) => ({
+      id: d.id,
+      type: d.decisionType,
+      item: d.suggestedAction || 'N/A',
+      confidence: Number(d.confidenceScore) || 0,
+      result: d.outcome || 'PENDING',
+      reasoning: d.reasoning,
+      timestamp: d.createdAt.toISOString(),
+    }));
+
+    // Adicionar sugestões de compra
+    const purchaseSuggestions = suggestions.map((s) => ({
+      id: s.id,
+      itemId: s.itemId,
+      itemName: s.item.nome,
+      sku: s.item.sku,
+      supplierId: s.supplierId,
+      supplierName: s.supplier?.nome || 'Sem fornecedor',
+      suggestedQty: s.suggestedQty,
+      unitCost: Number(s.unitCost),
+      estimatedTotal: Number(s.estimatedTotal),
+      urgencyScore: s.urgencyScore,
+      status: s.status,
+      reason: s.reason,
+    }));
+
+    return {
+      demandForecasts,
+      supplierRankings,
+      recentDecisions,
+      purchaseSuggestions,
+      summary: {
+        criticalAlerts: alerts.filter(a => a.severity === 'HIGH').length,
+        pendingSuggestions: suggestions.length,
+        suppliersEvaluated: supplierPerformance.length,
+        decisionsToday: decisions.filter(d => 
+          d.createdAt.toDateString() === new Date().toDateString()
+        ).length,
+      },
+    };
+  }
 
   @Post('chat')
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))

@@ -268,8 +268,8 @@ export const suppliersApi = {
 };
 
 export const purchaseOrdersApi = {
-  getAll: async () => {
-    const { data } = await api.get('/purchase-orders');
+  getAll: async (params?: { page?: number; pageSize?: number; search?: string }) => {
+    const { data } = await api.get('/purchase-orders', { params });
     return data;
   },
   getOne: async (id: string) => {
@@ -277,7 +277,15 @@ export const purchaseOrdersApi = {
     return data;
   },
   create: async (po: any) => {
-    const { data} = await api.post('/purchase-orders', po);
+    const { data } = await api.post('/purchase-orders', po);
+    return data;
+  },
+  update: async (id: string, po: any) => {
+    const { data } = await api.put(`/purchase-orders/${id}`, po);
+    return data;
+  },
+  cancel: async (id: string) => {
+    const { data } = await api.delete(`/purchase-orders/${id}`);
     return data;
   },
   createFromSuggestions: async (params?: { suggestionIds?: string[]; supplierId?: string }) => {
@@ -303,12 +311,24 @@ export const kanbanApi = {
     const { data } = await api.get('/kanban/board');
     return data;
   },
-  createCard: async (card: any) => {
+  getCard: async (id: string) => {
+    const { data } = await api.get(`/kanban/cards/${id}`);
+    return data;
+  },
+  createCard: async (card: { titulo: string; descricao?: string; purchaseOrderId?: string }) => {
     const { data } = await api.post('/kanban/cards', card);
+    return data;
+  },
+  updateCard: async (id: string, card: { titulo?: string; descricao?: string; purchaseOrderId?: string }) => {
+    const { data } = await api.patch(`/kanban/cards/${id}`, card);
     return data;
   },
   moveCard: async (id: string, status: string, position?: number) => {
     const { data } = await api.patch(`/kanban/cards/${id}/move`, { status, position });
+    return data;
+  },
+  deleteCard: async (id: string) => {
+    const { data } = await api.delete(`/kanban/cards/${id}`);
     return data;
   },
 };

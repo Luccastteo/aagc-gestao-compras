@@ -129,89 +129,75 @@ export default function InventoryPage() {
 
   // Normaliza nomes de colunas para o padrão esperado
   const normalizeColumnNames = (data: any[]): any[] => {
+    // Normaliza headers vindos do Excel (remove acentos, espaços, pontuação)
+    const normalizeHeader = (header: string): string => {
+      return String(header || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // remove diacríticos
+        .replace(/[^a-z0-9]+/g, '_') // espaço/pontuação -> _
+        .replace(/^_+|_+$/g, '');
+    };
+
+    // Mapeia headers normalizados para o padrão aceito pela API
     const columnMappings: Record<string, string> = {
-      // SKU variations
-      'sku': 'SKU',
-      'Sku': 'SKU',
-      'codigo': 'SKU',
-      'Codigo': 'SKU',
-      'CODIGO': 'SKU',
-      'código': 'SKU',
-      'Código': 'SKU',
-      'cod': 'SKU',
-      'Cod': 'SKU',
-      'COD': 'SKU',
-      // Description variations
-      'descricao': 'Descricao',
-      'Descrição': 'Descricao',
-      'descrição': 'Descricao',
-      'DESCRICAO': 'Descricao',
-      'DESCRIÇÃO': 'Descricao',
-      'nome': 'Descricao',
-      'Nome': 'Descricao',
-      'NOME': 'Descricao',
-      'produto': 'Descricao',
-      'Produto': 'Descricao',
-      'PRODUTO': 'Descricao',
-      // Estoque variations
-      'estoque': 'Estoque_Atual',
-      'Estoque': 'Estoque_Atual',
-      'ESTOQUE': 'Estoque_Atual',
-      'saldo': 'Estoque_Atual',
-      'Saldo': 'Estoque_Atual',
-      'SALDO': 'Estoque_Atual',
-      'quantidade': 'Estoque_Atual',
-      'Quantidade': 'Estoque_Atual',
-      'QUANTIDADE': 'Estoque_Atual',
-      'qtd': 'Estoque_Atual',
-      'Qtd': 'Estoque_Atual',
-      'QTD': 'Estoque_Atual',
-      // Minimo variations
-      'minimo': 'Estoque_Minimo',
-      'Minimo': 'Estoque_Minimo',
-      'MINIMO': 'Estoque_Minimo',
-      'mínimo': 'Estoque_Minimo',
-      'Mínimo': 'Estoque_Minimo',
-      'min': 'Estoque_Minimo',
-      'Min': 'Estoque_Minimo',
-      'MIN': 'Estoque_Minimo',
-      // Maximo variations
-      'maximo': 'Estoque_Maximo',
-      'Maximo': 'Estoque_Maximo',
-      'MAXIMO': 'Estoque_Maximo',
-      'máximo': 'Estoque_Maximo',
-      'Máximo': 'Estoque_Maximo',
-      'max': 'Estoque_Maximo',
-      'Max': 'Estoque_Maximo',
-      'MAX': 'Estoque_Maximo',
-      // Custo variations
-      'custo': 'Custo_Unitario',
-      'Custo': 'Custo_Unitario',
-      'CUSTO': 'Custo_Unitario',
-      'preco': 'Custo_Unitario',
-      'Preco': 'Custo_Unitario',
-      'PRECO': 'Custo_Unitario',
-      'preço': 'Custo_Unitario',
-      'Preço': 'Custo_Unitario',
-      'valor': 'Custo_Unitario',
-      'Valor': 'Custo_Unitario',
-      'VALOR': 'Custo_Unitario',
-      // Categoria
-      'categoria': 'Categoria',
-      'CATEGORIA': 'Categoria',
-      // Unidade
-      'unidade': 'Unidade',
-      'UNIDADE': 'Unidade',
-      'und': 'Unidade',
-      'Und': 'Unidade',
-      'UND': 'Unidade',
+      // SKU
+      sku: 'SKU',
+      codigo: 'SKU',
+      cod: 'SKU',
+      // Descrição
+      descricao: 'Descricao',
+      nome: 'Descricao',
+      produto: 'Descricao',
+
+      // Categoria / Unidade
+      categoria: 'Categoria',
+      unidade: 'Unidade',
+      und: 'Unidade',
+
+      // Estoque atual (várias planilhas usam "estoque final" como saldo atual)
+      estoque: 'Estoque_Atual',
+      saldo: 'Estoque_Atual',
+      quantidade: 'Estoque_Atual',
+      qtd: 'Estoque_Atual',
+      estoque_atual: 'Estoque_Atual',
+      estoque_final: 'Estoque_Atual',
+
+      // Mínimo / Máximo
+      minimo: 'Estoque_Minimo',
+      min: 'Estoque_Minimo',
+      ponto_reposicao: 'Estoque_Minimo',
+      estoque_minimo: 'Estoque_Minimo',
+
+      maximo: 'Estoque_Maximo',
+      max: 'Estoque_Maximo',
+      estoque_maximo: 'Estoque_Maximo',
+
+      // Custo
+      custo: 'Custo_Unitario',
+      custo_unitario: 'Custo_Unitario',
+      preco_compra: 'Custo_Unitario',
+      valor_compra: 'Custo_Unitario',
+
+      // Lead time
+      lead_time_dias: 'Lead_Time_Dias',
+      lead_time: 'Lead_Time_Dias',
+      prazo_dias: 'Lead_Time_Dias',
+
+      // Localização
+      localizacao: 'Localizacao',
+      local: 'Localizacao',
+
+      // Observações (não enviamos para API hoje, mas preservamos para preview se existir)
+      observacoes: 'Observacoes',
     };
 
     return data.map(row => {
       const normalizedRow: Record<string, any> = {};
       for (const key of Object.keys(row)) {
-        const normalizedKey = columnMappings[key] || key;
-        normalizedRow[normalizedKey] = row[key];
+        const mappedKey = columnMappings[normalizeHeader(key)] || key;
+        normalizedRow[mappedKey] = row[key];
       }
       return normalizedRow;
     });
@@ -230,12 +216,23 @@ export default function InventoryPage() {
     });
   };
 
-  // Função para limpar valores
+  // Função para limpar valores (mantém número quando possível)
   const cleanValue = (val: any): any => {
     if (val === null || val === undefined) return null;
     const str = String(val).trim();
     if (str === '' || str === 'undefined' || str === 'null') return null;
-    return str;
+    return val;
+  };
+
+  const toNumber = (val: any, fallback = 0): number => {
+    if (val === null || val === undefined || val === '') return fallback;
+    if (typeof val === 'number') return Number.isFinite(val) ? val : fallback;
+    const s = String(val).trim();
+    if (!s) return fallback;
+    // suporta "1.234,56" e "1234,56"
+    const normalized = s.replace(/\./g, '').replace(',', '.');
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : fallback;
   };
 
   // Handle file upload
@@ -337,11 +334,12 @@ export default function InventoryPage() {
         Descricao: String(row.Descricao || '').trim(),
         Categoria: row.Categoria ? String(row.Categoria).trim() : undefined,
         Unidade: row.Unidade ? String(row.Unidade).trim() : undefined,
-        Estoque_Atual: Number(row.Estoque_Atual || 0),
-        Estoque_Minimo: Number(row.Estoque_Minimo || 0),
-        Estoque_Maximo: Number(row.Estoque_Maximo || 100),
-        Custo_Unitario: Number(row.Custo_Unitario || 0),
-        Lead_Time_Dias: Number(row.Lead_Time_Dias || 7),
+        // aceita Estoque_Atual ou Estoque Final (mapeado na normalização)
+        Estoque_Atual: toNumber(row.Estoque_Atual, 0),
+        Estoque_Minimo: toNumber(row.Estoque_Minimo, 0),
+        Estoque_Maximo: toNumber(row.Estoque_Maximo, 100),
+        Custo_Unitario: toNumber(row.Custo_Unitario, 0),
+        Lead_Time_Dias: toNumber(row.Lead_Time_Dias, 7),
         Localizacao: row.Localizacao ? String(row.Localizacao).trim() : undefined,
       }));
     

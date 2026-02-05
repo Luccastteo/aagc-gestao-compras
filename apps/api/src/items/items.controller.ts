@@ -1,10 +1,18 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ItemsService } from './items.service';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { CreateItemDto, ImportItemsDto, MovimentarEstoqueDto, UpdateItemDto } from './dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
+
+// Importação de Excel: aceitamos colunas extras (planilhas do cliente costumam ter mais campos),
+// mas fazemos whitelist do que de fato usamos (extra é descartado).
+const importItemsValidationPipe = new ValidationPipe({
+  whitelist: true,
+  forbidNonWhitelisted: false,
+  transform: true,
+});
 
 @Controller('items')
 export class ItemsController {
@@ -50,6 +58,7 @@ export class ItemsController {
 
   @Post('import')
   @Roles(Role.MANAGER, Role.OWNER)
+  @UsePipes(importItemsValidationPipe)
   async importExcel(@Body() data: ImportItemsDto, @CurrentUser() user: CurrentUserData) {
     return this.itemsService.importFromExcel(data.items, user.organizationId, user.userId);
   }

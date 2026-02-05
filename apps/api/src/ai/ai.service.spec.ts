@@ -44,6 +44,7 @@ describe('AIService', () => {
           choices: [{
             message: { content: 'Test response' },
           }],
+          model: 'gpt-test',
           usage: {
             prompt_tokens: 10,
             completion_tokens: 20,
@@ -59,7 +60,8 @@ describe('AIService', () => {
       ]);
 
       expect(result.content).toBe('Test response');
-      expect(result.usage.totalTokens).toBe(30);
+      expect(result.tokens).toBe(30);
+      expect(result.model).toBe('gpt-test');
     });
   });
 });

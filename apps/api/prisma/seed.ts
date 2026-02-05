@@ -378,6 +378,194 @@ async function main() {
 
   console.log('✅ Kanban card created');
 
+  // Create inventory alerts for critical items
+  const criticalItems = await prisma.item.findMany({
+    where: {
+      organizationId: org.id,
+      saldo: { lte: prisma.item.fields.minimo },
+    },
+  });
+
+  for (const item of criticalItems) {
+    await prisma.inventoryAlert.upsert({
+      where: {
+        organizationId_itemId_alertType: {
+          organizationId: org.id,
+          itemId: item.id,
+          alertType: 'CRITICAL_STOCK',
+        },
+      },
+      update: {
+        severity: item.saldo === 0 ? 'HIGH' : 'MEDIUM',
+        message: `Item ${item.sku} está com estoque crítico: ${item.saldo}/${item.minimo}`,
+        status: 'OPEN',
+      },
+      create: {
+        organizationId: org.id,
+        itemId: item.id,
+        alertType: 'CRITICAL_STOCK',
+        severity: item.saldo === 0 ? 'HIGH' : 'MEDIUM',
+        message: `Item ${item.sku} está com estoque crítico: ${item.saldo}/${item.minimo}`,
+        status: 'OPEN',
+      },
+    });
+
+    // Create purchase suggestions for critical items
+    await prisma.purchaseSuggestion.upsert({
+      where: {
+        organizationId_itemId_status: {
+          organizationId: org.id,
+          itemId: item.id,
+          status: 'OPEN',
+        },
+      },
+      update: {
+        suggestedQty: item.maximo - item.saldo,
+        unitCost: item.custoUnitario,
+        estimatedTotal: (item.maximo - item.saldo) * item.custoUnitario,
+        urgencyScore: item.saldo === 0 ? 95 : 75,
+        reason: `Estoque abaixo do mínimo (${item.saldo}/${item.minimo})`,
+        supplierId: item.supplierId || supplier1.id,
+      },
+      create: {
+        organizationId: org.id,
+        itemId: item.id,
+        supplierId: item.supplierId || supplier1.id,
+        suggestedQty: item.maximo - item.saldo,
+        unitCost: item.custoUnitario,
+        estimatedTotal: (item.maximo - item.saldo) * item.custoUnitario,
+        leadTimeDays: item.leadTimeDays || 7,
+        urgencyScore: item.saldo === 0 ? 95 : 75,
+        reason: `Estoque abaixo do mínimo (${item.saldo}/${item.minimo})`,
+        status: 'OPEN',
+      },
+    });
+  }
+
+  console.log(`✅ ${criticalItems.length} inventory alerts and suggestions created`);
+
+  // Create supplier performance records
+  await prisma.supplierPerformance.upsert({
+    where: {
+      organizationId_supplierId_period: {
+        organizationId: org.id,
+        supplierId: supplier1.id,
+        period: 'MONTHLY',
+      },
+    },
+    update: {
+      ordersDelivered: 25,
+      onTimeDeliveryRate: 92.0,
+      qualityScore: 88.0,
+      priceCompetitiveness: 85.0,
+      responseTime: 4.5,
+      overallScore: 87.5,
+    },
+    create: {
+      organizationId: org.id,
+      supplierId: supplier1.id,
+      period: 'MONTHLY',
+      ordersDelivered: 25,
+      onTimeDeliveryRate: 92.0,
+      qualityScore: 88.0,
+      priceCompetitiveness: 85.0,
+      responseTime: 4.5,
+      overallScore: 87.5,
+    },
+  });
+
+  await prisma.supplierPerformance.upsert({
+    where: {
+      organizationId_supplierId_period: {
+        organizationId: org.id,
+        supplierId: supplier2.id,
+        period: 'MONTHLY',
+      },
+    },
+    update: {
+      ordersDelivered: 18,
+      onTimeDeliveryRate: 78.0,
+      qualityScore: 75.0,
+      priceCompetitiveness: 80.0,
+      responseTime: 8.2,
+      overallScore: 76.3,
+    },
+    create: {
+      organizationId: org.id,
+      supplierId: supplier2.id,
+      period: 'MONTHLY',
+      ordersDelivered: 18,
+      onTimeDeliveryRate: 78.0,
+      qualityScore: 75.0,
+      priceCompetitiveness: 80.0,
+      responseTime: 8.2,
+      overallScore: 76.3,
+    },
+  });
+
+  console.log('✅ Supplier performance records created');
+
+  // Create sample audit logs
+  await prisma.auditLog.createMany({
+    data: [
+      {
+        actorUserId: manager.id,
+        action: 'CREATE',
+        entity: 'PurchaseOrder',
+        entityId: po.id,
+        after: JSON.stringify({ codigo: po.codigo, status: 'DRAFT' }),
+        organizationId: org.id,
+      },
+      {
+        actorUserId: operator.id,
+        action: 'UPDATE',
+        entity: 'Item',
+        entityId: item1Db.id,
+        before: JSON.stringify({ saldo: 10 }),
+        after: JSON.stringify({ saldo: 3, motivo: 'Consumo produção' }),
+        organizationId: org.id,
+      },
+      {
+        actorUserId: owner.id,
+        action: 'CREATE',
+        entity: 'Supplier',
+        entityId: supplier1.id,
+        after: JSON.stringify({ nome: supplier1.nome, isDefault: true }),
+        organizationId: org.id,
+      },
+    ],
+    skipDuplicates: true,
+  });
+
+  console.log('✅ Sample audit logs created');
+
+  // Create sample decision logs for AI insights
+  await prisma.decisionLog.createMany({
+    data: [
+      {
+        organizationId: org.id,
+        decisionType: 'AUTO_APPROVE',
+        inputData: JSON.stringify({ itemId: item1Db.id, suggestedQty: 15 }),
+        confidenceScore: 0.85,
+        suggestedAction: 'Aprovar compra de ROL-6205',
+        reasoning: 'Item crítico com histórico de consumo estável',
+        outcome: 'APPROVED',
+      },
+      {
+        organizationId: org.id,
+        decisionType: 'ESCALATE',
+        inputData: JSON.stringify({ itemId: item2Db.id, suggestedQty: 10 }),
+        confidenceScore: 0.65,
+        suggestedAction: 'Revisar compra de ROL-6206',
+        reasoning: 'Preço acima da média histórica',
+        outcome: 'PENDING_REVIEW',
+      },
+    ],
+    skipDuplicates: true,
+  });
+
+  console.log('✅ Decision logs created');
+
   console.log('\n🎉 Seed completed successfully!');
   console.log('\n📧 Login credentials:');
   console.log('  Owner:    owner@demo.com / demo123');

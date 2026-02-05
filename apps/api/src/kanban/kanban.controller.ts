@@ -2,7 +2,8 @@ import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/commo
 import { KanbanService } from './kanban.service';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { Role, KanbanStatus } from '@prisma/client';
+import { Role } from '@prisma/client';
+import { CreateCardDto, UpdateCardDto, MoveCardDto } from './dto';
 
 @Controller('kanban')
 export class KanbanController {
@@ -13,9 +14,14 @@ export class KanbanController {
     return this.kanbanService.getBoard(user.organizationId);
   }
 
+  @Get('cards/:id')
+  async getCard(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return this.kanbanService.getCard(id, user.organizationId);
+  }
+
   @Post('cards')
   @Roles(Role.OPERATOR, Role.MANAGER, Role.OWNER)
-  async createCard(@Body() data: any, @CurrentUser() user: CurrentUserData) {
+  async createCard(@Body() data: CreateCardDto, @CurrentUser() user: CurrentUserData) {
     return this.kanbanService.createCard(data, user.organizationId, user.userId);
   }
 
@@ -23,18 +29,17 @@ export class KanbanController {
   @Roles(Role.OPERATOR, Role.MANAGER, Role.OWNER)
   async moveCard(
     @Param('id') id: string,
-    @Body('status') status: KanbanStatus,
-    @Body('position') position: number | undefined,
+    @Body() data: MoveCardDto,
     @CurrentUser() user: CurrentUserData,
   ) {
-    return this.kanbanService.moveCard(id, status, position, user.organizationId, user.userId);
+    return this.kanbanService.moveCard(id, data.status, data.position, user.organizationId, user.userId);
   }
 
   @Patch('cards/:id')
   @Roles(Role.OPERATOR, Role.MANAGER, Role.OWNER)
   async updateCard(
     @Param('id') id: string,
-    @Body() data: any,
+    @Body() data: UpdateCardDto,
     @CurrentUser() user: CurrentUserData,
   ) {
     return this.kanbanService.updateCard(id, data, user.organizationId, user.userId);

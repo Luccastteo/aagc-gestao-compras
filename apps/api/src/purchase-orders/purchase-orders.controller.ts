@@ -1,9 +1,9 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
-import { CreatePurchaseOrderDto } from './dto';
+import { CreatePurchaseOrderDto, UpdatePurchaseOrderDto } from './dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('purchase-orders')
@@ -24,6 +24,22 @@ export class PurchaseOrdersController {
   @Roles(Role.OPERATOR, Role.MANAGER, Role.OWNER)
   async create(@Body() data: CreatePurchaseOrderDto, @CurrentUser() user: CurrentUserData) {
     return this.poService.create(data, user.organizationId, user.userId);
+  }
+
+  @Put(':id')
+  @Roles(Role.OPERATOR, Role.MANAGER, Role.OWNER)
+  async update(
+    @Param('id') id: string,
+    @Body() data: UpdatePurchaseOrderDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.poService.update(id, data, user.organizationId, user.userId);
+  }
+
+  @Delete(':id')
+  @Roles(Role.MANAGER, Role.OWNER)
+  async cancel(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return this.poService.cancel(id, user.organizationId, user.userId);
   }
 
   @Post('from-suggestions')

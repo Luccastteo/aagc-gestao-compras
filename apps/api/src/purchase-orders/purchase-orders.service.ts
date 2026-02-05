@@ -333,6 +333,139 @@ export class PurchaseOrdersService {
     };
   }
 
+  async update(id: string, data: any, organizationId: string, userId: string) {
+    const po = await this.findOne(id, organizationId);
+
+    if (po.status !== 'DRAFT') {
+      throw new BadRequestException('Apenas pedidos em DRAFT podem ser editados');
+    }
+
+    // Validar supplier se fornecido
+    if (data.supplierId) {
+      await this.assertSupplierBelongsToOrg(data.supplierId, organizationId);
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Atualiza dados básicos
+      const updateData: any = {};
+      if (data.supplierId) updateData.supplierId = data.supplierId;
+      if (data.observacoes !== undefined) updateData.observacoes = data.observacoes;
+
+      if (Object.keys(updateData).length > 0) {
+        await tx.purchaseOrder.update({
+          where: { id },
+          data: updateData,
+        });
+      }
+
+      // Atualiza itens se fornecidos
+      if (data.items && data.items.length > 0) {
+        // Remove itens existentes
+        await tx.purchaseOrderItem.deleteMany({
+          where: { purchaseOrderId: id },
+        });
+
+        // Cria novos itens
+        let valorTotal = 0;
+        for (const line of data.items) {
+          await this.assertItemBelongsToOrg(line.itemId, organizationId);
+
+          const valorItem = line.quantidade * line.precoUnitario;
+          valorTotal += valorItem;
+
+          await tx.purchaseOrderItem.create({
+            data: {
+              purchaseOrderId: id,
+              itemId: line.itemId,
+              quantidade: line.quantidade,
+              precoUnitario: line.precoUnitario,
+              valorTotal: valorItem,
+            },
+          });
+        }
+
+        await tx.purchaseOrder.update({
+          where: { id },
+          data: { valorTotal },
+        });
+      }
+
+      return tx.purchaseOrder.findFirst({
+        where: { id, organizationId },
+        include: {
+          supplier: true,
+          createdBy: { select: { name: true, email: true } },
+          approvedBy: { select: { name: true, email: true } },
+          items: { include: { item: true } },
+        },
+      });
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorUserId: userId,
+        action: 'UPDATE',
+        entity: 'PurchaseOrder',
+        entityId: id,
+        before: JSON.stringify(po),
+        after: JSON.stringify(updated),
+        organizationId,
+      },
+    });
+
+    return updated;
+  }
+
+  async cancel(id: string, organizationId: string, userId: string) {
+    const po = await this.findOne(id, organizationId);
+
+    if (!['DRAFT', 'APPROVED'].includes(po.status)) {
+      throw new BadRequestException('Apenas pedidos em DRAFT ou APPROVED podem ser cancelados');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Atualiza status para CANCELLED
+      await tx.purchaseOrder.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+      });
+
+      // Libera sugestões vinculadas (volta para OPEN)
+      await tx.purchaseSuggestion.updateMany({
+        where: { purchaseOrderId: id, organizationId },
+        data: { status: 'OPEN', purchaseOrderId: null },
+      });
+
+      // Remove card do kanban se existir
+      await tx.kanbanCard.deleteMany({
+        where: { purchaseOrderId: id, organizationId },
+      });
+
+      return tx.purchaseOrder.findFirst({
+        where: { id, organizationId },
+        include: {
+          supplier: true,
+          createdBy: { select: { name: true, email: true } },
+          items: { include: { item: true } },
+        },
+      });
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorUserId: userId,
+        action: 'CANCEL',
+        entity: 'PurchaseOrder',
+        entityId: id,
+        before: JSON.stringify(po),
+        after: JSON.stringify(updated),
+        organizationId,
+      },
+    });
+
+    return updated;
+  }
+
   async approve(id: string, organizationId: string, userId: string) {
     const po = await this.findOne(id, organizationId);
 
