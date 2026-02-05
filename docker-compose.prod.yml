@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: aagc-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aagc_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_this_password}
+      POSTGRES_DB: ${POSTGRES_DB:-aagc_prod}
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aagc_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      postgres -c shared_preload_libraries=vector
+
+  redis:
+    image: redis:7-alpine
+    container_name: aagc-redis-prod
+    restart: unless-stopped
+    volumes:
+      - redis_data_prod:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Descomente as seções abaixo quando tiver Dockerfiles prontos
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: apps/api/Dockerfile
+  #   container_name: aagc-api-prod
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: production
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-aagc_user}:${POSTGRES_PASSWORD:-change_this_password}@postgres:5432/${POSTGRES_DB:-aagc_prod}
+  #     REDIS_URL: redis://redis:6379
+  #     JWT_SECRET: ${JWT_SECRET}
+  #     CORS_ORIGINS: ${CORS_ORIGINS}
+  #   ports:
+  #     - "3001:3001"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+
+  # worker:
+  #   build:
+  #     context: .
+  #     dockerfile: apps/worker/Dockerfile
+  #   container_name: aagc-worker-prod
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: production
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-aagc_user}:${POSTGRES_PASSWORD:-change_this_password}@postgres:5432/${POSTGRES_DB:-aagc_prod}
+  #     REDIS_URL: redis://redis:6379
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: apps/web/Dockerfile
+  #     args:
+  #       NEXT_PUBLIC_API_URL: ${API_URL}
+  #   container_name: aagc-web-prod
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - api
+
+volumes:
+  postgres_data_prod:
+  redis_data_prod:

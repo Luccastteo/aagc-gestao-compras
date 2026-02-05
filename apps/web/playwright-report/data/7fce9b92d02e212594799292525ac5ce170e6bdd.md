@@ -1,0 +1,65 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img [ref=e7]
+      - heading "AAGC" [level=1] [ref=e10]
+      - paragraph [ref=e11]: Gestão Inteligente de Compras
+    - generic [ref=e12]:
+      - heading "Entrar na sua conta" [level=2] [ref=e13]
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]: E-mail
+          - generic [ref=e17]:
+            - img [ref=e18]
+            - textbox "E-mail" [ref=e21]:
+              - /placeholder: seu@email.com
+              - text: manager@demo.com
+        - generic [ref=e22]:
+          - generic [ref=e23]: Senha
+          - generic [ref=e24]:
+            - img [ref=e25]
+            - textbox "Senha" [ref=e28]:
+              - /placeholder: ••••••••
+              - text: demo123
+            - button "Mostrar senha" [ref=e29] [cursor=pointer]:
+              - img [ref=e30]
+        - generic [ref=e33]:
+          - generic [ref=e34] [cursor=pointer]:
+            - checkbox "Lembrar-me" [ref=e35]
+            - generic [ref=e36]: Lembrar-me
+          - link "Esqueceu a senha?" [ref=e37] [cursor=pointer]:
+            - /url: /forgot-password
+        - generic [ref=e38]: Falha no login. Verifique suas credenciais.
+        - button "Entrar" [ref=e39] [cursor=pointer]
+    - generic [ref=e40]:
+      - paragraph [ref=e41]: Contas de Demonstração
+      - generic [ref=e42]:
+        - button "Proprietário owner@demo.com" [ref=e43] [cursor=pointer]:
+          - paragraph [ref=e44]: Proprietário
+          - paragraph [ref=e45]: owner@demo.com
+        - button "Gerente manager@demo.com" [ref=e46] [cursor=pointer]:
+          - paragraph [ref=e47]: Gerente
+          - paragraph [ref=e48]: manager@demo.com
+        - button "Operador operator@demo.com" [ref=e49] [cursor=pointer]:
+          - paragraph [ref=e50]: Operador
+          - paragraph [ref=e51]: operator@demo.com
+        - button "Visualizador viewer@demo.com" [ref=e52] [cursor=pointer]:
+          - paragraph [ref=e53]: Visualizador
+          - paragraph [ref=e54]: viewer@demo.com
+      - paragraph [ref=e55]: "Senha: demo123"
+  - generic [ref=e60] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e61]:
+      - img [ref=e62]
+    - generic [ref=e65]:
+      - button "Open issues overlay" [ref=e66]:
+        - generic [ref=e67]:
+          - generic [ref=e68]: "0"
+          - generic [ref=e69]: "1"
+        - generic [ref=e70]: Issue
+      - button "Collapse issues badge" [ref=e71]:
+        - img [ref=e72]
+  - alert [ref=e74]
+```

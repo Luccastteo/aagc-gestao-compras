@@ -42,19 +42,37 @@ export default function SuppliersPage() {
   // `GET /suppliers` é paginado no backend (retorna { data, pagination })
   const suppliers = suppliersResponse?.data || [];
 
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const createMutation = useMutation({
     mutationFn: suppliersApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       setShowCreateModal(false);
+      setCreateError(null);
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.message;
+      setCreateError(
+        Array.isArray(message) ? message.join(', ') : message || 'Erro ao criar fornecedor'
+      );
     },
   });
+
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => suppliersApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       setEditingSupplier(null);
+      setUpdateError(null);
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.message;
+      setUpdateError(
+        Array.isArray(message) ? message.join(', ') : message || 'Erro ao atualizar fornecedor'
+      );
     },
   });
 
@@ -211,6 +229,12 @@ export default function SuppliersPage() {
               </button>
             </div>
 
+            {createError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500 rounded-md text-red-500 text-sm" role="alert">
+                {createError}
+              </div>
+            )}
+
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label htmlFor="supplier-codigo" className="text-sm font-medium">Código *</label>
@@ -300,6 +324,12 @@ export default function SuppliersPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {updateError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500 rounded-md text-red-500 text-sm" role="alert">
+                {updateError}
+              </div>
+            )}
 
             <form onSubmit={handleUpdate} className="space-y-4">
               <div>

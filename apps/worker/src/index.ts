@@ -2,6 +2,7 @@ import { Worker, Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 import { processAutoPoForOrg } from './auto-po';
+import { processMLDataCollection } from './ml-data-collection';
 
 const prisma = new PrismaClient();
 
@@ -11,11 +12,13 @@ const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
 // Config from env
 const AUTO_PO_DEV_INTERVAL_SEC = parseInt(process.env.AUTO_PO_DEV_INTERVAL_SEC || '60', 10);
 const AUTO_PO_ENABLED = process.env.AUTO_PO_ENABLED !== 'false'; // Enabled by default
+const ML_DATA_COLLECTION_ENABLED = process.env.ML_DATA_COLLECTION_ENABLED !== 'false';
 
 // Requisito: jobs com nomes exatos
 const inventoryQueue = new Queue('inventory_daily_check', { connection });
 const poFollowupQueue = new Queue('po_followup', { connection });
 const autoPOQueue = new Queue('auto_po_generation', { connection });
+const mlDataQueue = new Queue('ml_data_collection', { connection });
 
 function nowIso() {
   return new Date().toISOString();
@@ -298,6 +301,33 @@ autoPOWorker.on('failed', (job, err) => {
   console.error(`❌ [AutoPO] Job ${job?.id} failed:`, err);
 });
 
+// Job 4: ml_data_collection - Coleta dados para ML (DEV: diário, PROD: diário)
+const mlDataWorker = new Worker(
+  'ml_data_collection',
+  async (job) => {
+    if (!ML_DATA_COLLECTION_ENABLED) {
+      console.log(`[ml_data_collection] Disabled by env, skipping`);
+      return { skipped: true, reason: 'ML_DATA_COLLECTION_ENABLED=false' };
+    }
+
+    const { orgId } = job.data as { orgId: string };
+    console.log(`[ml_data_collection] org=${orgId} job=${job.id}`);
+
+    const result = await processMLDataCollection(orgId, job.id);
+
+    return result;
+  },
+  { connection },
+);
+
+mlDataWorker.on('completed', (job) => {
+  console.log(`✅ [MLData] Job ${job.id} completed`);
+});
+
+mlDataWorker.on('failed', (job, err) => {
+  console.error(`❌ [MLData] Job ${job?.id} failed:`, err);
+});
+
 // Schedule repeating jobs
 async function setupScheduledJobs() {
   console.log('⏰ Setting up scheduled jobs...');
@@ -348,6 +378,21 @@ async function setupScheduledJobs() {
         },
       );
     }
+
+    // ML Data Collection - DAILY
+    // Coleta dados históricos para treinar modelos de ML
+    if (ML_DATA_COLLECTION_ENABLED) {
+      await mlDataQueue.add(
+        'run',
+        { orgId: org.id },
+        {
+          jobId: `ml_data_collection:${org.id}`,
+          repeat: { pattern: '0 2 * * *' }, // 02:00 diariamente
+          removeOnComplete: true,
+          removeOnFail: 1000,
+        },
+      );
+    }
   }
 
   const scheduleInfo = isDev
@@ -359,6 +404,11 @@ async function setupScheduledJobs() {
     console.log('🤖 Auto PO Generation: ENABLED (aggressive mode)');
   } else {
     console.log('⚠️ Auto PO Generation: DISABLED (set AUTO_PO_ENABLED=true to enable)');
+  }
+  if (ML_DATA_COLLECTION_ENABLED) {
+    console.log('📊 ML Data Collection: ENABLED (daily 02:00)');
+  } else {
+    console.log('⚠️ ML Data Collection: DISABLED (set ML_DATA_COLLECTION_ENABLED=true to enable)');
   }
 }
 
@@ -383,6 +433,7 @@ process.on('SIGTERM', async () => {
   await inventoryWorker.close();
   await poFollowupWorker.close();
   await autoPOWorker.close();
+  await mlDataWorker.close();
   await prisma.$disconnect();
   process.exit(0);
 });
@@ -392,6 +443,7 @@ process.on('SIGINT', async () => {
   await inventoryWorker.close();
   await poFollowupWorker.close();
   await autoPOWorker.close();
+  await mlDataWorker.close();
   await prisma.$disconnect();
   process.exit(0);
 });

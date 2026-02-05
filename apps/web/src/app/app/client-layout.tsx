@@ -63,7 +63,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navigation = [
     { name: 'Painel', href: '/app/dashboard', icon: LayoutDashboard, color: 'blue' },
-    { name: 'Estoque', href: '/app/inventory', icon: Package, color: 'green' },
+    { name: 'Produtos', href: '/app/inventory', icon: Package, color: 'green' },
     { name: 'Pedidos de Compra', href: '/app/purchase-orders', icon: ShoppingCart, color: 'orange' },
     { name: 'Fornecedores', href: '/app/suppliers', icon: Building2, color: 'yellow' },
     { name: 'Kanban', href: '/app/kanban', icon: Kanban, color: 'purple' },
@@ -81,7 +81,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Bot className="w-6 h-6 text-cyan-400" />
             <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">AAGC</h1>
           </div>
-          <p className="text-sm text-gray-400 mt-1">Gestão Inteligente de Estoque</p>
+          <p className="text-sm text-gray-400 mt-1">Gestão Inteligente de Produtos</p>
         </div>
 
         <nav className="flex-1 p-4 space-y-1">

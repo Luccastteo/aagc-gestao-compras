@@ -1,321 +1,536 @@
-# Guia de Deploy - AAGC SaaS
+# 🚀 Runbook de Deploy - AAGC SaaS
 
-Este guia explica como fazer deploy do sistema AAGC em produção.
+**Versão**: 1.0  
+**Última Atualização**: 2026-02-05
 
 ---
 
-## Arquitetura de Produção
+## 📋 Pré-requisitos
+
+### Desenvolvimento Local
+- Node.js >= 20.0.0
+- pnpm >= 8.0.0
+- Docker e Docker Compose
+- Git
+
+### Produção
+- Servidor com Docker e Docker Compose
+- Domínio configurado (ex: `app.aagc.com`, `api.aagc.com`)
+- Certificado SSL (Let's Encrypt via Certbot ou similar)
+- PostgreSQL (pode ser container)
+- Redis (pode ser container)
+
+---
+
+## 🏗️ Arquitetura de Deploy
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│    Vercel       │     │  Railway/Render │     │   Neon/Supabase │
-│   (Frontend)    │────▶│     (API)       │────▶│  (PostgreSQL)   │
-│   Next.js       │     │    NestJS       │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                              │
-                              ▼
-                        ┌─────────────────┐
-                        │    Upstash      │
-                        │    (Redis)      │
-                        └─────────────────┘
+┌─────────────────┐
+│   Load Balancer │  (Nginx/Traefik/CloudFlare)
+│   + SSL/TLS     │
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    │         │
+┌───▼──┐  ┌──▼───┐
+│ WEB  │  │ API  │
+│:3000 │  │:3001 │
+└──────┘  └───┬──┘
+              │
+         ┌────┴────┐
+         │         │
+    ┌────▼───┐ ┌──▼────┐ ┌────────┐
+    │Postgres│ │ Redis │ │ Worker │
+    │:5432   │ │:6379  │ │ (Queue)│
+    └────────┘ └───────┘ └────────┘
 ```
 
 ---
 
-## 1. Banco de Dados PostgreSQL
+## 📦 Deploy com Docker Compose (Recomendado)
 
-### Opção A: Neon (Recomendado - Gratuito)
+### 1. Preparar Variáveis de Ambiente
 
-1. Acesse https://neon.tech
-2. Crie uma conta e um novo projeto
-3. Copie a connection string:
-   ```
-   postgresql://user:password@ep-xxx.region.aws.neon.tech/neondb?sslmode=require
-   ```
-
-### Opção B: Supabase
-
-1. Acesse https://supabase.com
-2. Crie um novo projeto
-3. Vá em Settings > Database > Connection string
-4. Copie a URI
-
-### Opção C: Railway
-
-1. Acesse https://railway.app
-2. New Project > Deploy PostgreSQL
-3. Copie a DATABASE_URL das variáveis
-
----
-
-## 2. Redis
-
-### Opção A: Upstash (Recomendado - Gratuito)
-
-1. Acesse https://upstash.com
-2. Crie um banco Redis
-3. Copie a REDIS_URL:
-   ```
-   rediss://default:xxx@xxx.upstash.io:6379
-   ```
-
-### Opção B: Railway
-
-1. No mesmo projeto, adicione Redis
-2. Copie a REDIS_URL
-
----
-
-## 3. Deploy da API
-
-### Opção A: Railway (Recomendado)
-
-1. Conecte seu repositório GitHub
-2. Selecione a pasta `apps/api`
-3. Configure as variáveis de ambiente:
-
-```env
-DATABASE_URL=postgresql://...
-REDIS_URL=redis://...
-JWT_SECRET=sua-chave-secreta-muito-longa-e-segura
-NODE_ENV=production
-PORT=3001
-FRONTEND_URL=https://seu-frontend.vercel.app
-
-# Opcional - Notificações
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=seu-email@gmail.com
-SMTP_PASS=sua-senha-de-app
-SMTP_FROM=seu-email@gmail.com
-```
-
-4. Deploy será automático
-
-### Opção B: Render
-
-1. Acesse https://render.com
-2. New > Web Service
-3. Conecte o repositório
-4. Configure:
-   - Root Directory: `apps/api`
-   - Build Command: `pnpm install && pnpm prisma generate && pnpm build`
-   - Start Command: `pnpm prisma migrate deploy && node dist/main.js`
-5. Adicione as variáveis de ambiente
-
-### Opção C: Docker (VPS)
-
+#### `.env.production` (root)
 ```bash
-# Build
-docker build -t aagc-api ./apps/api
+# Ambiente
+NODE_ENV=production
 
-# Run
-docker run -d \
-  -p 3001:3001 \
-  -e DATABASE_URL="postgresql://..." \
-  -e REDIS_URL="redis://..." \
-  -e JWT_SECRET="sua-chave" \
-  -e NODE_ENV="production" \
-  aagc-api
-```
+# Domínios
+FRONTEND_URL=https://app.aagc.com
+API_URL=https://api.aagc.com
 
----
-
-## 4. Deploy do Frontend
-
-### Vercel (Recomendado)
-
-1. Acesse https://vercel.com
-2. Import Git Repository
-3. Selecione o repositório
-4. Configure:
-   - Framework Preset: Next.js
-   - Root Directory: `apps/web`
-5. Adicione variável de ambiente:
-   ```
-   NEXT_PUBLIC_API_URL=https://sua-api.railway.app
-   ```
-6. Deploy!
-
-### Netlify (Alternativa)
-
-1. Acesse https://netlify.com
-2. Add new site > Import from Git
-3. Configure:
-   - Base directory: `apps/web`
-   - Build command: `pnpm build`
-   - Publish directory: `apps/web/.next`
-
----
-
-## 5. Configuração de Email
-
-### Gmail (Desenvolvimento)
-
-1. Ative 2FA na conta Google
-2. Gere uma "Senha de App" em https://myaccount.google.com/apppasswords
-3. Use nas variáveis:
-   ```
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USER=seu-email@gmail.com
-   SMTP_PASS=senha-de-app-gerada
-   ```
-
-### SendGrid (Produção)
-
-1. Crie conta em https://sendgrid.com
-2. Crie uma API Key
-3. Configure:
-   ```
-   SMTP_HOST=smtp.sendgrid.net
-   SMTP_PORT=587
-   SMTP_USER=apikey
-   SMTP_PASS=sua-api-key
-   ```
-
----
-
-## 6. WhatsApp e SMS (Twilio)
-
-1. Crie conta em https://twilio.com
-2. Pegue Account SID e Auth Token
-3. Configure WhatsApp Sandbox ou API oficial
-4. Adicione nas variáveis:
-   ```
-   TWILIO_ACCOUNT_SID=ACxxx
-   TWILIO_AUTH_TOKEN=xxx
-   TWILIO_WHATSAPP_FROM=+14155238886
-   TWILIO_SMS_FROM=+1234567890
-   ```
-
----
-
-## 7. Domínio Personalizado
-
-### Frontend (Vercel)
-1. Settings > Domains
-2. Adicione seu domínio
-3. Configure DNS apontando para Vercel
-
-### API (Railway)
-1. Settings > Networking
-2. Generate Domain ou Custom Domain
-
----
-
-## 8. Variáveis de Ambiente Completas
-
-### API (apps/api)
-
-```env
-# Database
-DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require
+# Banco de Dados
+DATABASE_URL=postgresql://aagc_user:SENHA_SEGURA@postgres:5432/aagc_prod?schema=public
 
 # Redis
-REDIS_URL=redis://default:pass@host:6379
+REDIS_URL=redis://redis:6379
 
-# Server
-PORT=3001
-NODE_ENV=production
+# JWT
+JWT_SECRET=GERE_UM_SECRET_SEGURO_DE_64_CARACTERES_AQUI
+JWT_EXPIRES_IN=7d
 
-# Security
-JWT_SECRET=uma-chave-muito-longa-e-segura-com-pelo-menos-32-caracteres
+# Rate Limit (produção)
+RATE_LIMIT_MAX=60
+RATE_LIMIT_TTL=60
 
-# Frontend
-FRONTEND_URL=https://aagc.vercel.app
+# CORS (importante!)
+CORS_ORIGINS=https://app.aagc.com
+
+# Swagger (desabilitado em prod)
+ENABLE_SWAGGER=false
 
 # Email (SMTP)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=email@gmail.com
-SMTP_PASS=senha-de-app
-SMTP_FROM=email@gmail.com
+SMTP_USER=seu-email@gmail.com
+SMTP_PASS=sua-senha-app
+SMTP_FROM=noreply@aagc.com
 
-# Twilio (WhatsApp/SMS)
-TWILIO_ACCOUNT_SID=ACxxx
-TWILIO_AUTH_TOKEN=xxx
-TWILIO_WHATSAPP_FROM=+14155238886
-TWILIO_SMS_FROM=+1234567890
+# OpenAI (opcional)
+OPENAI_API_KEY=sk-...
 ```
 
-### Frontend (apps/web)
+**⚠️ IMPORTANTE**: Gere secrets fortes!
+```bash
+# Gerar JWT_SECRET
+openssl rand -base64 64
 
-```env
-NEXT_PUBLIC_API_URL=https://api.aagc.com.br
+# Ou
+node -e "console.log(require('crypto').randomBytes(64).toString('base64'))"
+```
+
+### 2. Docker Compose para Produção
+
+Crie `docker-compose.prod.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: aagc-postgres-prod
+    environment:
+      POSTGRES_USER: aagc_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: aagc_prod
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aagc_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aagc-redis-prod
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: aagc-api-prod
+    env_file:
+      - .env.production
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: aagc-worker-prod
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${API_URL}
+    container_name: aagc-web-prod
+    env_file:
+      - .env.production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+```
+
+### 3. Dockerfiles
+
+#### `apps/api/Dockerfile`
+```dockerfile
+FROM node:20-alpine AS base
+RUN npm install -g pnpm
+
+FROM base AS dependencies
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS build
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/apps/api/node_modules ./apps/api/node_modules
+COPY . .
+WORKDIR /app/apps/api
+RUN pnpm prisma generate
+RUN pnpm build
+
+FROM base AS production
+WORKDIR /app
+COPY --from=build /app/apps/api/dist ./dist
+COPY --from=build /app/apps/api/node_modules ./node_modules
+COPY --from=build /app/apps/api/prisma ./prisma
+EXPOSE 3001
+CMD ["node", "dist/main.js"]
+```
+
+#### `apps/worker/Dockerfile`
+```dockerfile
+FROM node:20-alpine AS base
+RUN npm install -g pnpm
+
+FROM base AS dependencies
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/worker/package.json ./apps/worker/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS build
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+WORKDIR /app/apps/worker
+RUN pnpm build
+
+FROM base AS production
+WORKDIR /app
+COPY --from=build /app/apps/worker/dist ./dist
+COPY --from=build /app/apps/worker/node_modules ./node_modules
+CMD ["node", "dist/index.js"]
+```
+
+#### `apps/web/Dockerfile`
+```dockerfile
+FROM node:20-alpine AS base
+RUN npm install -g pnpm
+
+FROM base AS dependencies
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json ./apps/web/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS build
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+WORKDIR /app/apps/web
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+RUN pnpm build
+
+FROM base AS production
+WORKDIR /app
+COPY --from=build /app/apps/web/.next ./.next
+COPY --from=build /app/apps/web/node_modules ./node_modules
+COPY --from=build /app/apps/web/public ./public
+COPY --from=build /app/apps/web/package.json ./
+EXPOSE 3000
+CMD ["pnpm", "start"]
+```
+
+### 4. Procedure de Deploy
+
+```bash
+# 1. Clone o repositório
+git clone https://github.com/seu-usuario/aagc-saas.git
+cd aagc-saas
+
+# 2. Crie .env.production com variáveis corretas
+cp .env.example .env.production
+nano .env.production  # Edite as variáveis
+
+# 3. Build das imagens
+docker-compose -f docker-compose.prod.yml build
+
+# 4. Rodar migrations (primeira vez)
+docker-compose -f docker-compose.prod.yml run --rm api sh -c "cd /app && pnpm prisma migrate deploy"
+
+# 5. Subir os serviços
+docker-compose -f docker-compose.prod.yml up -d
+
+# 6. Verificar logs
+docker-compose -f docker-compose.prod.yml logs -f
+
+# 7. Verificar health
+curl http://localhost:3001/health
+curl http://localhost:3001/health/ready
+
+# 8. Acessar aplicação
+# Web: http://localhost:3000
+# API: http://localhost:3001
+# Docs: http://localhost:3001/api/docs (se ENABLE_SWAGGER=true)
+```
+
+### 5. Criar Primeiro Usuário Admin
+
+```bash
+# Acessar container da API
+docker exec -it aagc-api-prod sh
+
+# Rodar seed (cria org demo + usuários demo)
+cd /app && pnpm prisma db seed
+
+# Ou criar manualmente via Prisma Studio
+pnpm prisma studio
+```
+
+**Usuários Demo Criados**:
+- `owner@demo.com` / `demo123` (OWNER)
+- `manager@demo.com` / `demo123` (MANAGER)
+- `operator@demo.com` / `demo123` (OPERATOR)
+- `viewer@demo.com` / `demo123` (VIEWER)
+
+**⚠️ IMPORTANTE**: Altere as senhas ou crie novos usuários em produção!
+
+---
+
+## 🌐 Deploy em Cloud (Alternativas)
+
+### Vercel (Web) + Render (API + Worker)
+
+**Web (Vercel)**:
+1. Conecte repositório ao Vercel
+2. Configure build command: `cd apps/web && pnpm build`
+3. Configure variáveis de ambiente: `NEXT_PUBLIC_API_URL`
+
+**API (Render)**:
+1. Crie Web Service no Render
+2. Build command: `cd apps/api && pnpm install && pnpm build && pnpm prisma generate`
+3. Start command: `cd apps/api && pnpm start`
+4. Adicione PostgreSQL e Redis add-ons
+
+**Worker (Render)**:
+1. Crie Background Worker no Render
+2. Build command: `cd apps/worker && pnpm install && pnpm build`
+3. Start command: `cd apps/worker && node dist/index.js`
+
+### Fly.io (Full Stack)
+
+```bash
+# Instalar flyctl
+curl -L https://fly.io/install.sh | sh
+
+# Deploy API
+cd apps/api
+fly launch --no-deploy
+fly secrets set DATABASE_URL=... JWT_SECRET=... REDIS_URL=...
+fly deploy
+
+# Deploy Worker
+cd apps/worker
+fly launch --no-deploy
+fly secrets set DATABASE_URL=... REDIS_URL=...
+fly deploy
+
+# Deploy Web
+cd apps/web
+fly launch --no-deploy
+fly secrets set NEXT_PUBLIC_API_URL=https://sua-api.fly.dev
+fly deploy
 ```
 
 ---
 
-## 9. Migração do Banco
+## 🔒 Checklist de Segurança Pré-Deploy
 
-Após o deploy da API, as migrations rodam automaticamente.
-
-Para rodar manualmente:
-```bash
-# Via Railway CLI
-railway run pnpm prisma migrate deploy
-
-# Via conexão direta
-DATABASE_URL="postgresql://..." pnpm prisma migrate deploy
-```
-
-Para popular com dados iniciais:
-```bash
-railway run pnpm prisma db seed
-```
+- [ ] **JWT_SECRET** gerado com 64+ caracteres aleatórios
+- [ ] **CORS_ORIGINS** configurado para domínio correto
+- [ ] **ENABLE_SWAGGER** = `false` em produção
+- [ ] **Rate Limit** ativo (60 req/min default)
+- [ ] **Helmet** ativo (CSP configurado)
+- [ ] **Senhas do banco** fortes (20+ caracteres)
+- [ ] **Senhas dos usuários demo** alteradas ou desabilitadas
+- [ ] **Logs** não expõem PII (emails, senhas, tokens)
+- [ ] **Health endpoints** respondendo (`/health`, `/health/ready`)
+- [ ] **Migrations** rodadas com sucesso
+- [ ] **Backups** do banco configurados
 
 ---
 
-## 10. Monitoramento
+## 🔍 Monitoring e Observability
+
+### Health Checks
+
+```bash
+# Liveness (processo vivo?)
+curl https://api.aagc.com/health
+# Resposta esperada:
+# {"status":"ok","timestamp":"...","uptime":123.45,"environment":"production"}
+
+# Readiness (pronto para receber requests?)
+curl https://api.aagc.com/health/ready
+# Resposta esperada:
+# {"status":"ready","timestamp":"...","checks":{"database":true,"redis":true}}
+```
 
 ### Logs
-- Railway: Dashboard > Logs
-- Render: Dashboard > Logs
-- Vercel: Functions > Logs
 
-### Health Check
-- API: `https://sua-api.com/health`
-- Frontend: Acesse normalmente
+```bash
+# Logs da API
+docker logs -f aagc-api-prod
 
----
+# Logs do Worker
+docker logs -f aagc-worker-prod
 
-## Checklist de Deploy
+# Logs do Web
+docker logs -f aagc-web-prod
+```
 
-- [ ] PostgreSQL configurado
-- [ ] Redis configurado
-- [ ] API deployed
-- [ ] Migrations executadas
-- [ ] Seed executado (usuários demo)
-- [ ] Frontend deployed
-- [ ] Variáveis de ambiente corretas
-- [ ] CORS configurado (FRONTEND_URL)
-- [ ] Teste de login
-- [ ] Teste de funcionalidades
-- [ ] Domínio configurado (opcional)
-- [ ] SSL ativo (automático na maioria)
+### Métricas Recomendadas
 
----
+- Taxa de requisições por segundo (RPS)
+- Latência P50, P95, P99
+- Taxa de erro HTTP (4xx, 5xx)
+- Uso de CPU e memória
+- Tamanho da fila do Worker (BullMQ)
+- Conexões ativas no PostgreSQL
 
-## Custos Estimados
-
-| Serviço | Plano Gratuito | Produção |
-|---------|----------------|----------|
-| Vercel | Hobby (grátis) | Pro ($20/mês) |
-| Railway | $5 crédito/mês | ~$10-30/mês |
-| Neon | 0.5GB grátis | $19/mês |
-| Upstash | 10k req/dia | $0.20/100k |
-| SendGrid | 100 emails/dia | $19.95/mês |
-| Twilio | $15 crédito | Pay as you go |
-
-**Total estimado para produção leve: $30-50/mês**
+**Ferramentas Sugeridas**:
+- **Logs**: Datadog, LogDNA, Better Stack
+- **Métricas**: Prometheus + Grafana
+- **APM**: Sentry, New Relic
+- **Uptime**: UptimeRobot, Pingdom
 
 ---
 
-## Suporte
+## 🆘 Troubleshooting
 
-Em caso de problemas:
-1. Verifique os logs da API
-2. Teste a conexão com o banco
-3. Verifique as variáveis de ambiente
-4. Confira o CORS e a URL do frontend
+### API não inicia
+
+```bash
+# Verificar logs
+docker logs aagc-api-prod
+
+# Problemas comuns:
+# 1. DATABASE_URL incorreto
+# 2. Migrations não rodadas
+# 3. REDIS_URL inacessível
+```
+
+### Worker não processa jobs
+
+```bash
+# Verificar conexão com Redis
+docker exec -it aagc-redis-prod redis-cli ping
+# Deve retornar: PONG
+
+# Verificar logs do worker
+docker logs aagc-worker-prod
+```
+
+### Web não conecta na API
+
+```bash
+# Verificar variável NEXT_PUBLIC_API_URL
+docker inspect aagc-web-prod | grep NEXT_PUBLIC_API_URL
+
+# Verificar CORS na API
+curl -H "Origin: https://app.aagc.com" \
+     -H "Access-Control-Request-Method: POST" \
+     -X OPTIONS \
+     https://api.aagc.com/items
+```
+
+### Banco de dados lento
+
+```bash
+# Verificar queries lentas
+docker exec -it aagc-postgres-prod psql -U aagc_user -d aagc_prod
+> SELECT * FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;
+
+# Adicionar índices conforme necessário
+```
+
+---
+
+## 📈 Rollback
+
+### Rollback com Docker
+
+```bash
+# 1. Parar serviços atuais
+docker-compose -f docker-compose.prod.yml down
+
+# 2. Checkout da versão anterior
+git checkout v1.0.0
+
+# 3. Rebuild e subir
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+### Rollback de Migrations
+
+```bash
+# Prisma não tem rollback automático
+# Opção 1: Restaurar backup do banco
+pg_restore -U aagc_user -d aagc_prod backup.sql
+
+# Opção 2: Criar migration manual de reversão
+```
+
+---
+
+## 📞 Suporte
+
+- **Email**: suporte@aagc.com
+- **Docs**: https://docs.aagc.com
+- **Status Page**: https://status.aagc.com
+
+---
+
+**Última Revisão**: 2026-02-05  
+**Autor**: Tech Team AAGC

@@ -30,6 +30,13 @@ model Organization {
   commsLogs      CommsLog[]
   inventoryAlerts     InventoryAlert[]
   purchaseSuggestions PurchaseSuggestion[]
+  consumptionHistory  ConsumptionHistory[]
+  supplierPerformance SupplierPerformance[]
+  priceHistory        PriceHistory[]
+  predictions         MLPrediction[]
+  decisionLogs        DecisionLog[]
+  knowledgeDocuments  KnowledgeDocument[]
+  policy              PurchasePolicy?
 
   @@map("organizations")
 }
@@ -88,6 +95,8 @@ model Supplier {
   items          Item[]
   purchaseOrders PurchaseOrder[]
   purchaseSuggestions PurchaseSuggestion[]
+  performance    SupplierPerformance[]
+  priceHistory   PriceHistory[]
 
   @@unique([organizationId, codigo])
   @@index([organizationId])
@@ -121,6 +130,9 @@ model Item {
   movements          Movement[]
   inventoryAlerts    InventoryAlert[]
   purchaseSuggestions PurchaseSuggestion[]
+  consumptionHistory ConsumptionHistory[]
+  priceHistory       PriceHistory[]
+  predictions        MLPrediction[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -370,4 +382,243 @@ model PurchaseSuggestion {
   @@index([organizationId, purchaseOrderId])
   @@unique([organizationId, itemId, status])
   @@map("purchase_suggestions")
+}
+
+// ============================================
+// CAMADA DE INTELIGÊNCIA ARTIFICIAL
+// ============================================
+
+/// Histórico de consumo diário por item para treinar modelos ML
+model ConsumptionHistory {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  itemId         String
+  item           Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  date           DateTime     @default(now())
+  quantity       Float        // Quantidade consumida no período
+  
+  // Contexto para ML (sazonalidade)
+  dayOfWeek      Int          // 0-6 (domingo a sábado)
+  month          Int          // 1-12
+  quarter        Int          // 1-4
+  year           Int
+  weekOfYear     Int          // 1-53
+  isHoliday      Boolean      @default(false)
+  
+  // Fonte do consumo
+  source         String       // 'MANUAL_ADJUSTMENT', 'PO_RECEIVED', 'SYSTEM_CALCULATED'
+  
+  createdAt      DateTime     @default(now())
+  
+  @@unique([organizationId, itemId, date])
+  @@index([organizationId, itemId, date])
+  @@index([organizationId, date])
+  @@map("consumption_history")
+}
+
+/// Performance calculada de fornecedores baseada em histórico real
+model SupplierPerformance {
+  id                    String       @id @default(uuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierId            String
+  supplier              Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  
+  // Métricas calculadas
+  avgLeadTimeDays       Float        // Lead time médio real
+  onTimeDeliveryRate    Float        // % entregas no prazo (0-1)
+  qualityScore          Float        // Score de qualidade (0-100)
+  priceCompetitiveness  Float        // Quão competitivo vs mercado (0-100)
+  communicationScore    Float        // Responsividade (0-100)
+  
+  // Dados brutos
+  totalOrders           Int          @default(0)
+  completedOrders       Int          @default(0)
+  lateOrders            Int          @default(0)
+  canceledOrders        Int          @default(0)
+  
+  // Variação de preços
+  avgPriceVariation     Float        @default(0) // % média de variação vs histórico
+  
+  // Timestamps
+  lastEvaluatedAt       DateTime     @default(now())
+  dataFrom              DateTime     // Início do período avaliado
+  dataTo                DateTime     // Fim do período avaliado
+  
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  
+  @@unique([organizationId, supplierId])
+  @@index([organizationId, supplierId])
+  @@map("supplier_performance")
+}
+
+/// Histórico de variação de preços por item e fornecedor
+model PriceHistory {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  itemId         String
+  item           Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  supplierId     String?
+  supplier       Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  
+  price          Float
+  currency       String       @default("BRL")
+  quantity       Float        // Quantidade cotada
+  
+  // Fonte do preço
+  source         String       // 'PURCHASE_ORDER', 'QUOTATION', 'MANUAL_ENTRY', 'MARKETPLACE'
+  referenceId    String?      // ID do PO ou cotação
+  
+  effectiveDate  DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  
+  @@index([organizationId, itemId, effectiveDate])
+  @@index([organizationId, supplierId, effectiveDate])
+  @@map("price_history")
+}
+
+/// Previsões de modelos de Machine Learning
+model MLPrediction {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  itemId          String
+  item            Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  predictionType  String       // 'DEMAND_FORECAST', 'LEAD_TIME', 'PRICE_TREND', 'URGENCY_SCORE'
+  model           String       // 'PROPHET', 'ARIMA', 'LSTM', 'RANDOM_FOREST', 'XGB'
+  version         String       // Versão do modelo
+  
+  // Previsão
+  forecastHorizon Int          // Dias à frente
+  predictedValue  Float   
+  confidence      Float        // 0-1
+  lowerBound      Float?       // Intervalo de confiança inferior
+  upperBound      Float?       // Intervalo de confiança superior
+  
+  // Metadata
+  features        Json         // Features usadas na previsão
+  parameters      Json         // Hiperparâmetros do modelo
+  
+  // Validação posterior
+  actualValue     Float?       // Valor real (preenchido posteriormente)
+  error           Float?       // Erro absoluto
+  
+  forecastDate    DateTime     // Data para qual foi feita a previsão
+  createdAt       DateTime     @default(now())
+  
+  @@index([organizationId, itemId, predictionType, forecastDate])
+  @@index([organizationId, createdAt])
+  @@map("ml_predictions")
+}
+
+/// Log completo de decisões tomadas pela IA
+model DecisionLog {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  decisionType   String       // 'AUTO_APPROVE', 'CREATE_PO', 'ESCALATE', 'REJECT', 'SUPPLIER_SELECT'
+  entity         String       // 'PURCHASE_ORDER', 'PURCHASE_SUGGESTION', 'INVENTORY_ALERT'
+  entityId       String
+  
+  // Input da decisão
+  inputData      Json         // Contexto completo
+  
+  // Raciocínio da IA
+  reasoning      Json         // { factors: [], weights: {}, confidence: 0.85, alternatives: [] }
+  llmExplanation String?      @db.Text // Explicação em linguagem natural
+  
+  // Output
+  decision       String       // Decisão tomada
+  confidence     Float        // 0-1
+  
+  // Validação posterior (aprendizado)
+  wasCorrect     Boolean?
+  feedback       String?      @db.Text
+  correctedBy    String?      // userId que corrigiu
+  
+  // Timestamps
+  decidedAt      DateTime     @default(now())
+  evaluatedAt    DateTime?
+  
+  createdAt      DateTime     @default(now())
+  
+  @@index([organizationId, decisionType, decidedAt])
+  @@index([organizationId, entityId])
+  @@map("decision_logs")
+}
+
+/// Base de conhecimento para RAG (Retrieval-Augmented Generation)
+model KnowledgeDocument {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  type           String       // 'POLICY', 'CONTRACT', 'MANUAL', 'MEMO', 'FAQ'
+  title          String
+  content        String       @db.Text
+  
+  // RAG - Embeddings (requer pgvector) - comentado temporariamente
+  // embedding      Unsupported("vector(1536)")? // OpenAI text-embedding-3-small
+  
+  // Metadata
+  tags           String[]     @default([])
+  category       String?
+  version        String       @default("1.0")
+  language       String       @default("pt-BR")
+  
+  // Acesso
+  isActive       Boolean      @default(true)
+  restrictedTo   String[]     @default([]) // roleIds com acesso
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  createdBy      String       // userId
+  
+  @@index([organizationId, type, isActive])
+  @@map("knowledge_documents")
+}
+
+/// Políticas de compras configuráveis por organização
+model PurchasePolicy {
+  id                        String       @id @default(uuid())
+  organizationId            String       @unique
+  organization              Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Limites de auto-aprovação
+  autoApproveThreshold      Float        @default(5000) // R$ máximo para auto-aprovar
+  requiresQuotesAbove       Float        @default(1000) // R$ mínimo para exigir cotações
+  minQuotesRequired         Int          @default(3)
+  
+  // Fornecedores
+  preferredSupplierIds      String[]     @default([])
+  blockedSupplierIds        String[]     @default([])
+  
+  // Lead time
+  maxAcceptableLeadTimeDays Int          @default(30)
+  urgentThresholdDays       Int          @default(7)   // Considerar urgente se <= 7 dias
+  
+  // Preços
+  priceVariationTolerance   Float        @default(0.15) // 15% tolerância vs histórico
+  
+  // Estoque
+  safetyStockMultiplier     Float        @default(1.5)  // min = demanda_média * 1.5
+  reorderPointDays          Int          @default(14)   // Reabastecer quando < 14 dias
+  
+  // Automação (feature flags)
+  enableAutoApproval        Boolean      @default(false)
+  enableAutoPurchase        Boolean      @default(false) // Comprar sem intervenção humana
+  
+  // Exceções
+  allowEmergencyOverride    Boolean      @default(true)
+  
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
+  
+  @@map("purchase_policies")
 }

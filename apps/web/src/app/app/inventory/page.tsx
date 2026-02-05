@@ -33,11 +33,20 @@ export default function InventoryPage() {
     enabled: showAnalyze,
   });
 
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const createMutation = useMutation({
     mutationFn: itemsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] });
       setShowCreateModal(false);
+      setCreateError(null);
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.message;
+      setCreateError(
+        Array.isArray(message) ? message.join(', ') : message || 'Erro ao criar item'
+      );
     },
   });
 
@@ -87,7 +96,7 @@ export default function InventoryPage() {
       
       const worksheet = XLSX.utils.json_to_sheet(result.data);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Estoque');
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Produtos');
       
       // Auto-size columns
       const colWidths = Object.keys(result.data[0] || {}).map(key => ({
@@ -323,16 +332,17 @@ export default function InventoryPage() {
         const desc = row.Descricao ? String(row.Descricao).trim() : '';
         return sku !== '' && desc !== '' && sku !== 'undefined' && desc !== 'undefined';
       })
-      .map(row => ({
+        .map(row => ({
         SKU: String(row.SKU || '').trim(),
         Descricao: String(row.Descricao || '').trim(),
+        Categoria: row.Categoria ? String(row.Categoria).trim() : undefined,
+        Unidade: row.Unidade ? String(row.Unidade).trim() : undefined,
         Estoque_Atual: Number(row.Estoque_Atual || 0),
         Estoque_Minimo: Number(row.Estoque_Minimo || 0),
         Estoque_Maximo: Number(row.Estoque_Maximo || 100),
         Custo_Unitario: Number(row.Custo_Unitario || 0),
         Lead_Time_Dias: Number(row.Lead_Time_Dias || 7),
-        Localizacao: String(row.Localizacao || ''),
-        ...(row.Observacoes && { Observacoes: String(row.Observacoes) })
+        Localizacao: row.Localizacao ? String(row.Localizacao).trim() : undefined,
       }));
     
     if (validItems.length === 0) {
@@ -354,8 +364,8 @@ export default function InventoryPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Estoque</h1>
-          <p className="text-muted-foreground mt-1">Gerencie seus itens de estoque</p>
+          <h1 className="text-3xl font-bold">Produtos</h1>
+          <p className="text-muted-foreground mt-1">Gerencie seus produtos e estoque</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
@@ -363,7 +373,7 @@ export default function InventoryPage() {
             className="flex items-center gap-2 px-4 py-2 bg-secondary text-foreground rounded-md hover:bg-secondary/80"
           >
             <Bot className="w-4 h-4" />
-            {showAnalyze ? 'Ocultar Análise' : 'Analisar Estoque'}
+            {showAnalyze ? 'Ocultar Análise' : 'Analisar Produtos'}
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -427,7 +437,7 @@ export default function InventoryPage() {
           {isAnalyzing ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full" />
-              Analisando estoque...
+              Analisando produtos...
             </div>
           ) : analysis ? (
             <>
@@ -495,7 +505,7 @@ export default function InventoryPage() {
             {items.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                  Nenhum item cadastrado. Use o botão &quot;Novo Item&quot; ou importe via Excel.
+                  Nenhum produto cadastrado. Use o botão &quot;Novo Item&quot; ou importe via Excel.
                 </td>
               </tr>
             ) : (
@@ -545,6 +555,11 @@ export default function InventoryPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+            {createError && (
+              <div className="p-3 bg-red-500/10 border border-red-500 rounded-md text-red-500 text-sm" role="alert">
+                {createError}
+              </div>
+            )}
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label htmlFor="item-sku" className="text-sm font-medium">SKU *</label>
@@ -567,7 +582,7 @@ export default function InventoryPage() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="item-saldo" className="text-sm font-medium">Estoque</label>
-                  <input id="item-saldo" name="saldo" type="number" defaultValue={0} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
+                  <input id="item-saldo" name="saldo" type="number" min="0" defaultValue={0} className="w-full mt-1 px-3 py-2 bg-background border border-input rounded-md" />
                 </div>
                 <div>
                   <label htmlFor="item-minimo" className="text-sm font-medium">Mínimo</label>

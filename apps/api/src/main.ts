@@ -92,20 +92,29 @@ async function bootstrap() {
     }),
   );
 
-  // Swagger
-  const config = new DocumentBuilder()
-    .setTitle('AAGC SaaS API')
-    .setDescription('Multi-tenant Purchase Management System')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
-
+  // Get port first
   const port = process.env.PORT || 3001;
+
+  // Swagger (apenas em desenvolvimento ou se explicitamente habilitado)
+  const enableSwagger = process.env.ENABLE_SWAGGER === 'true' || process.env.NODE_ENV === 'development';
+  if (enableSwagger) {
+    const config = new DocumentBuilder()
+      .setTitle('AAGC SaaS API')
+      .setDescription('Multi-tenant Purchase Management System')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+    console.log(`📚 Docs available at http://localhost:${port}/api/docs`);
+  } else {
+    console.log(`📚 Swagger disabled in production (set ENABLE_SWAGGER=true to override)`);
+  }
   await app.listen(port, '0.0.0.0');
   console.log(`🚀 API running on http://localhost:${port}`);
-  console.log(`📚 Docs available at http://localhost:${port}/api/docs`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔒 CORS origins: ${origins.join(', ')}`);
+  console.log(`⚡ Rate limit: ${rateLimitMax} requests per ${rateLimitTTL/1000}s`);
 }
 
 bootstrap();

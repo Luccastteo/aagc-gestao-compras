@@ -1,0 +1,55 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - img [ref=e17]
+      - heading "AAGC" [level=1] [ref=e20]
+      - paragraph [ref=e21]: Gestão Inteligente de Compras
+    - generic [ref=e22]:
+      - heading "Entrar na sua conta" [level=2] [ref=e23]
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]: E-mail
+          - generic [ref=e27]:
+            - img [ref=e28]
+            - textbox "E-mail" [ref=e31]:
+              - /placeholder: seu@email.com
+              - text: manager@demo.com
+        - generic [ref=e32]:
+          - generic [ref=e33]: Senha
+          - generic [ref=e34]:
+            - img [ref=e35]
+            - textbox "Senha" [ref=e38]:
+              - /placeholder: ••••••••
+              - text: demo123
+            - button "Mostrar senha" [ref=e39] [cursor=pointer]:
+              - img [ref=e40]
+        - generic [ref=e43]:
+          - generic [ref=e44] [cursor=pointer]:
+            - checkbox "Lembrar-me" [ref=e45]
+            - generic [ref=e46]: Lembrar-me
+          - link "Esqueceu a senha?" [ref=e47] [cursor=pointer]:
+            - /url: /forgot-password
+        - button "Entrar" [ref=e48] [cursor=pointer]
+    - generic [ref=e49]:
+      - paragraph [ref=e50]: Contas de Demonstração
+      - generic [ref=e51]:
+        - button "Proprietário owner@demo.com" [ref=e52] [cursor=pointer]:
+          - paragraph [ref=e53]: Proprietário
+          - paragraph [ref=e54]: owner@demo.com
+        - button "Gerente manager@demo.com" [ref=e55] [cursor=pointer]:
+          - paragraph [ref=e56]: Gerente
+          - paragraph [ref=e57]: manager@demo.com
+        - button "Operador operator@demo.com" [ref=e58] [cursor=pointer]:
+          - paragraph [ref=e59]: Operador
+          - paragraph [ref=e60]: operator@demo.com
+        - button "Visualizador viewer@demo.com" [ref=e61] [cursor=pointer]:
+          - paragraph [ref=e62]: Visualizador
+          - paragraph [ref=e63]: viewer@demo.com
+      - paragraph [ref=e64]: "Senha: demo123"
+```

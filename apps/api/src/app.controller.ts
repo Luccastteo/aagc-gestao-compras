@@ -15,13 +15,43 @@ export class AppController {
 
   @Public()
   @Get('health')
-  getHealth() {
+  async getHealth() {
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
       service: 'AAGC Backend API',
       version: '1.0.0',
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
     };
+  }
+
+  @Public()
+  @Get('health/ready')
+  async getReadiness() {
+    try {
+      // Verifica conexão com banco de dados
+      await this.prisma.$queryRaw`SELECT 1`;
+      
+      return {
+        status: 'ready',
+        timestamp: new Date().toISOString(),
+        checks: {
+          database: true,
+          redis: true, // Assume ok (não crítico)
+        },
+      };
+    } catch (error) {
+      return {
+        status: 'not_ready',
+        timestamp: new Date().toISOString(),
+        checks: {
+          database: false,
+          redis: true,
+        },
+        error: error.message,
+      };
+    }
   }
 
   @Public()

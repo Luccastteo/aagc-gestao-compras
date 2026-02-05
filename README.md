@@ -332,38 +332,60 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 
 ## 🔥 Deploy em Produção
 
-### Build
+📘 **[Ver Runbook Completo de Deploy](./DEPLOY.md)** - Guia detalhado com Docker Compose, variáveis de ambiente, checklist de segurança e troubleshooting.
+
+### Quick Start - Docker Compose
 
 ```bash
-# Build de todos os apps
-pnpm build
+# 1. Crie .env.production com variáveis corretas
+cp .env.example .env.production
+nano .env.production
 
-# Ou individualmente
-cd apps/api && pnpm build
-cd apps/web && pnpm build
-cd apps/worker && pnpm build
+# 2. Build e deploy
+docker-compose -f docker-compose.prod.yml build
+docker-compose -f docker-compose.prod.yml run --rm api pnpm prisma migrate deploy
+docker-compose -f docker-compose.prod.yml up -d
+
+# 3. Verificar health
+curl http://localhost:3001/health
+curl http://localhost:3001/health/ready
 ```
 
-### Executar em Produção
+### Variáveis de Ambiente Críticas (Produção)
 
-```bash
-# API
-cd apps/api && pnpm start
+```env
+# Segurança
+NODE_ENV=production
+JWT_SECRET=gere_um_secret_de_64_caracteres
+CORS_ORIGINS=https://seu-dominio.com
+ENABLE_SWAGGER=false
 
-# Web
-cd apps/web && pnpm start
+# Banco & Cache
+DATABASE_URL=postgresql://user:senha@host:5432/db
+REDIS_URL=redis://host:6379
 
-# Worker
-cd apps/worker && pnpm start
+# URLs
+FRONTEND_URL=https://app.seu-dominio.com
+API_URL=https://api.seu-dominio.com
+
+# Rate Limit (60 req/min em prod)
+RATE_LIMIT_MAX=60
+RATE_LIMIT_TTL=60
 ```
 
-### Ambiente
+### Checklist de Segurança ✅
 
-- Configure `NODE_ENV=production`
-- Configure DATABASE_URL real (PostgreSQL hospedado)
-- Configure REDIS_URL real (Redis hospedado)
-- Defina JWT_SECRET seguro
-- Configure origens CORS na API
+- [ ] JWT_SECRET forte (64+ caracteres)
+- [ ] CORS configurado para domínio específico
+- [ ] Swagger desabilitado (`ENABLE_SWAGGER=false`)
+- [ ] Rate limiting ativo (60 req/min)
+- [ ] Helmet/CSP configurado (já no código)
+- [ ] Health endpoints respondendo
+- [ ] Senhas padrão alteradas
+- [ ] Migrations rodadas
+- [ ] Backups configurados
+
+**Para deploy completo, consulte [DEPLOY.md](./DEPLOY.md)**
 
 ---
 

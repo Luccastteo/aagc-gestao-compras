@@ -414,7 +414,7 @@ export class ItemsService {
 
     return {
       data: exportData,
-      filename: `estoque_${new Date().toISOString().split('T')[0]}.xlsx`,
+      filename: `produtos_${new Date().toISOString().split('T')[0]}.xlsx`,
       totalItems: items.length,
       criticalItems: items.filter(i => i.saldo <= i.minimo).length,
     };
