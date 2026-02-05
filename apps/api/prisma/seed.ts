@@ -379,65 +379,55 @@ async function main() {
   console.log('✅ Kanban card created');
 
   // Create inventory alerts for critical items
-  const criticalItems = await prisma.item.findMany({
-    where: {
-      organizationId: org.id,
-      saldo: { lte: prisma.item.fields.minimo },
-    },
+  const allItems = await prisma.item.findMany({
+    where: { organizationId: org.id },
   });
+  const criticalItems = allItems.filter((item) => item.saldo <= item.minimo);
 
   for (const item of criticalItems) {
-    await prisma.inventoryAlert.upsert({
-      where: {
-        organizationId_itemId_alertType: {
-          organizationId: org.id,
-          itemId: item.id,
-          alertType: 'CRITICAL_STOCK',
-        },
-      },
-      update: {
-        severity: item.saldo === 0 ? 'HIGH' : 'MEDIUM',
-        message: `Item ${item.sku} está com estoque crítico: ${item.saldo}/${item.minimo}`,
-        status: 'OPEN',
-      },
-      create: {
+    // Delete existing alert for this item to allow re-seeding
+    await prisma.inventoryAlert.deleteMany({
+      where: { organizationId: org.id, itemId: item.id },
+    });
+
+    await prisma.inventoryAlert.create({
+      data: {
         organizationId: org.id,
         itemId: item.id,
-        alertType: 'CRITICAL_STOCK',
         severity: item.saldo === 0 ? 'HIGH' : 'MEDIUM',
-        message: `Item ${item.sku} está com estoque crítico: ${item.saldo}/${item.minimo}`,
+        reason: `Item ${item.sku} está com estoque crítico: ${item.saldo}/${item.minimo}`,
         status: 'OPEN',
+        snapshot: JSON.stringify({
+          sku: item.sku,
+          saldo: item.saldo,
+          minimo: item.minimo,
+          maximo: item.maximo,
+        }),
       },
     });
 
+    // Delete existing suggestion for this item to allow re-seeding
+    await prisma.purchaseSuggestion.deleteMany({
+      where: { organizationId: org.id, itemId: item.id },
+    });
+
     // Create purchase suggestions for critical items
-    await prisma.purchaseSuggestion.upsert({
-      where: {
-        organizationId_itemId_status: {
-          organizationId: org.id,
-          itemId: item.id,
-          status: 'OPEN',
-        },
-      },
-      update: {
-        suggestedQty: item.maximo - item.saldo,
-        unitCost: item.custoUnitario,
-        estimatedTotal: (item.maximo - item.saldo) * item.custoUnitario,
-        urgencyScore: item.saldo === 0 ? 95 : 75,
-        reason: `Estoque abaixo do mínimo (${item.saldo}/${item.minimo})`,
-        supplierId: item.supplierId || supplier1.id,
-      },
-      create: {
+    await prisma.purchaseSuggestion.create({
+      data: {
         organizationId: org.id,
         itemId: item.id,
         supplierId: item.supplierId || supplier1.id,
         suggestedQty: item.maximo - item.saldo,
         unitCost: item.custoUnitario,
         estimatedTotal: (item.maximo - item.saldo) * item.custoUnitario,
-        leadTimeDays: item.leadTimeDays || 7,
-        urgencyScore: item.saldo === 0 ? 95 : 75,
         reason: `Estoque abaixo do mínimo (${item.saldo}/${item.minimo})`,
         status: 'OPEN',
+        snapshot: JSON.stringify({
+          sku: item.sku,
+          saldo: item.saldo,
+          minimo: item.minimo,
+          leadTimeDays: item.leadTimeDays,
+        }),
       },
     });
   }
@@ -445,61 +435,88 @@ async function main() {
   console.log(`✅ ${criticalItems.length} inventory alerts and suggestions created`);
 
   // Create supplier performance records
+  const now = new Date();
+  const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
   await prisma.supplierPerformance.upsert({
     where: {
-      organizationId_supplierId_period: {
+      organizationId_supplierId: {
         organizationId: org.id,
         supplierId: supplier1.id,
-        period: 'MONTHLY',
       },
     },
     update: {
-      ordersDelivered: 25,
-      onTimeDeliveryRate: 92.0,
+      avgLeadTimeDays: 4.5,
+      onTimeDeliveryRate: 0.92,
       qualityScore: 88.0,
       priceCompetitiveness: 85.0,
-      responseTime: 4.5,
-      overallScore: 87.5,
+      communicationScore: 90.0,
+      totalOrders: 30,
+      completedOrders: 25,
+      lateOrders: 2,
+      canceledOrders: 1,
+      avgPriceVariation: 0.03,
+      lastEvaluatedAt: now,
+      dataFrom: threeMonthsAgo,
+      dataTo: now,
     },
     create: {
       organizationId: org.id,
       supplierId: supplier1.id,
-      period: 'MONTHLY',
-      ordersDelivered: 25,
-      onTimeDeliveryRate: 92.0,
+      avgLeadTimeDays: 4.5,
+      onTimeDeliveryRate: 0.92,
       qualityScore: 88.0,
       priceCompetitiveness: 85.0,
-      responseTime: 4.5,
-      overallScore: 87.5,
+      communicationScore: 90.0,
+      totalOrders: 30,
+      completedOrders: 25,
+      lateOrders: 2,
+      canceledOrders: 1,
+      avgPriceVariation: 0.03,
+      lastEvaluatedAt: now,
+      dataFrom: threeMonthsAgo,
+      dataTo: now,
     },
   });
 
   await prisma.supplierPerformance.upsert({
     where: {
-      organizationId_supplierId_period: {
+      organizationId_supplierId: {
         organizationId: org.id,
         supplierId: supplier2.id,
-        period: 'MONTHLY',
       },
     },
     update: {
-      ordersDelivered: 18,
-      onTimeDeliveryRate: 78.0,
+      avgLeadTimeDays: 8.2,
+      onTimeDeliveryRate: 0.78,
       qualityScore: 75.0,
       priceCompetitiveness: 80.0,
-      responseTime: 8.2,
-      overallScore: 76.3,
+      communicationScore: 70.0,
+      totalOrders: 22,
+      completedOrders: 18,
+      lateOrders: 5,
+      canceledOrders: 2,
+      avgPriceVariation: 0.08,
+      lastEvaluatedAt: now,
+      dataFrom: threeMonthsAgo,
+      dataTo: now,
     },
     create: {
       organizationId: org.id,
       supplierId: supplier2.id,
-      period: 'MONTHLY',
-      ordersDelivered: 18,
-      onTimeDeliveryRate: 78.0,
+      avgLeadTimeDays: 8.2,
+      onTimeDeliveryRate: 0.78,
       qualityScore: 75.0,
       priceCompetitiveness: 80.0,
-      responseTime: 8.2,
-      overallScore: 76.3,
+      communicationScore: 70.0,
+      totalOrders: 22,
+      completedOrders: 18,
+      lateOrders: 5,
+      canceledOrders: 2,
+      avgPriceVariation: 0.08,
+      lastEvaluatedAt: now,
+      dataFrom: threeMonthsAgo,
+      dataTo: now,
     },
   });
 
@@ -545,20 +562,28 @@ async function main() {
       {
         organizationId: org.id,
         decisionType: 'AUTO_APPROVE',
-        inputData: JSON.stringify({ itemId: item1Db.id, suggestedQty: 15 }),
-        confidenceScore: 0.85,
-        suggestedAction: 'Aprovar compra de ROL-6205',
-        reasoning: 'Item crítico com histórico de consumo estável',
-        outcome: 'APPROVED',
+        entity: 'PURCHASE_SUGGESTION',
+        entityId: item1Db.id,
+        inputData: { itemId: item1Db.id, suggestedQty: 15, sku: 'ROL-6205' },
+        reasoning: { factors: ['critical_stock', 'stable_consumption'], weights: { urgency: 0.8, history: 0.7 }, confidence: 0.85 },
+        llmExplanation: 'Item crítico com histórico de consumo estável. Recomendado aprovar automaticamente.',
+        decision: 'APPROVE',
+        confidence: 0.85,
+        wasCorrect: true,
+        decidedAt: new Date(),
       },
       {
         organizationId: org.id,
         decisionType: 'ESCALATE',
-        inputData: JSON.stringify({ itemId: item2Db.id, suggestedQty: 10 }),
-        confidenceScore: 0.65,
-        suggestedAction: 'Revisar compra de ROL-6206',
-        reasoning: 'Preço acima da média histórica',
-        outcome: 'PENDING_REVIEW',
+        entity: 'PURCHASE_SUGGESTION',
+        entityId: item2Db.id,
+        inputData: { itemId: item2Db.id, suggestedQty: 10, sku: 'ROL-6206' },
+        reasoning: { factors: ['price_above_avg', 'low_urgency'], weights: { price: 0.6, urgency: 0.4 }, confidence: 0.65 },
+        llmExplanation: 'Preço acima da média histórica. Recomendado revisar manualmente antes de aprovar.',
+        decision: 'ESCALATE_TO_MANAGER',
+        confidence: 0.65,
+        wasCorrect: null,
+        decidedAt: new Date(),
       },
     ],
     skipDuplicates: true,

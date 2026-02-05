@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { suppliersApi } from '@/lib/api';
-import { Building2, Mail, Phone, MessageCircle, Clock, Star, Plus, X, Edit2, Trash2 } from 'lucide-react';
+import { Building2, Mail, Phone, MessageCircle, Clock, Star, Plus, X, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
 const qualidadeLabels: Record<string, string> = {
@@ -33,14 +33,20 @@ export default function SuppliersPage() {
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
+  
+  // Paginação server-side
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(12);
+  const [search, setSearch] = useState('');
 
   const { data: suppliersResponse, isLoading } = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: suppliersApi.getAll,
+    queryKey: ['suppliers', page, pageSize, search],
+    queryFn: () => suppliersApi.getAll({ page, pageSize, search: search || undefined }),
   });
 
   // `GET /suppliers` é paginado no backend (retorna { data, pagination })
   const suppliers = suppliersResponse?.data || [];
+  const pagination = suppliersResponse?.pagination || { total: 0, page: 1, pageSize: 12, totalPages: 1 };
 
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -145,6 +151,27 @@ export default function SuppliersPage() {
         </button>
       </div>
 
+      {/* Search Bar */}
+      <div className="flex items-center gap-4 p-4 bg-card border border-border rounded-lg">
+        <div className="flex-1">
+          <label htmlFor="search-suppliers" className="sr-only">Buscar fornecedores</label>
+          <input
+            id="search-suppliers"
+            type="text"
+            placeholder="Buscar por nome ou código..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            className="w-full max-w-md px-3 py-2 bg-background border border-input rounded-md"
+          />
+        </div>
+        <div className="text-sm text-muted-foreground">
+          {pagination.total} {pagination.total === 1 ? 'fornecedor' : 'fornecedores'}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {suppliers.map((supplier: any) => (
           <div key={supplier.id} className="p-6 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors">
@@ -214,6 +241,36 @@ export default function SuppliersPage() {
           </div>
         ))}
       </div>
+
+      {/* Pagination Controls */}
+      {pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-3 bg-card border border-border rounded-lg">
+          <div className="text-sm text-muted-foreground">
+            Página {pagination.page} de {pagination.totalPages}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="p-2 bg-secondary rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Página anterior"
+            >
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+            </button>
+            <span className="px-3 py-1 text-sm">
+              {page}
+            </span>
+            <button
+              onClick={() => setPage(Math.min(pagination.totalPages, page + 1))}
+              disabled={page >= pagination.totalPages}
+              className="p-2 bg-secondary rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Próxima página"
+            >
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

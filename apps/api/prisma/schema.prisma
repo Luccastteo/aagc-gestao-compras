@@ -226,6 +226,7 @@ model PurchaseOrderItem {
 
   @@unique([purchaseOrderId, itemId])
   @@index([purchaseOrderId])
+  @@index([itemId])
   @@map("purchase_order_items")
 }
 

@@ -3,7 +3,7 @@ import { PurchaseOrdersService } from './purchase-orders.service';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
-import { CreatePurchaseOrderDto, UpdatePurchaseOrderDto } from './dto';
+import { CreatePurchaseOrderDto, UpdatePurchaseOrderDto, CreateFromSuggestionsDto } from './dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('purchase-orders')
@@ -45,10 +45,10 @@ export class PurchaseOrdersController {
   @Post('from-suggestions')
   @Roles(Role.OPERATOR, Role.MANAGER, Role.OWNER)
   async createFromSuggestions(
-    @Body() body: { suggestionIds?: string[]; supplierId?: string },
+    @Body() dto: CreateFromSuggestionsDto,
     @CurrentUser() user: CurrentUserData,
   ) {
-    return this.poService.createFromSuggestions(body, user.organizationId, user.userId);
+    return this.poService.createFromSuggestions(dto, user.organizationId, user.userId);
   }
 
   @Post(':id/approve')

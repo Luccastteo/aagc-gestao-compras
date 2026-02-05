@@ -209,8 +209,8 @@ export const authApi = {
 };
 
 export const itemsApi = {
-  getAll: async () => {
-    const { data } = await api.get('/items');
+  getAll: async (params?: { page?: number; pageSize?: number; search?: string }) => {
+    const { data } = await api.get('/items', { params });
     return data;
   },
   getCritical: async () => {
@@ -249,8 +249,8 @@ export const itemsApi = {
 };
 
 export const suppliersApi = {
-  getAll: async () => {
-    const { data } = await api.get('/suppliers');
+  getAll: async (params?: { page?: number; pageSize?: number; search?: string }) => {
+    const { data } = await api.get('/suppliers', { params });
     return data;
   },
   create: async (supplier: any) => {

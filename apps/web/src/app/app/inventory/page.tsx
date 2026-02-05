@@ -6,7 +6,8 @@ import { itemsApi } from '@/lib/api';
 import { 
   Plus, AlertCircle, CheckCircle, Bot, 
   Download, Upload, FileSpreadsheet, X,
-  FileDown, FileUp, CheckCircle2
+  FileDown, FileUp, CheckCircle2,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -18,14 +19,20 @@ export default function InventoryPage() {
   const [importData, setImportData] = useState<any[]>([]);
   const [importResult, setImportResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Paginação server-side
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [search, setSearch] = useState('');
 
   const { data: itemsResponse, isLoading } = useQuery({
-    queryKey: ['items'],
-    queryFn: itemsApi.getAll,
+    queryKey: ['items', page, pageSize, search],
+    queryFn: () => itemsApi.getAll({ page, pageSize, search: search || undefined }),
   });
 
   // `GET /items` é paginado no backend (retorna { data, pagination })
   const items = itemsResponse?.data || [];
+  const pagination = itemsResponse?.pagination || { total: 0, page: 1, pageSize: 20, totalPages: 1 };
 
   const { data: analysis, isLoading: isAnalyzing } = useQuery({
     queryKey: ['items', 'analyze'],
@@ -486,8 +493,29 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Items Table */}
+      {/* Search and Items Table */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <label htmlFor="search-items" className="sr-only">Buscar produtos</label>
+              <input
+                id="search-items"
+                type="text"
+                placeholder="Buscar por SKU ou descrição..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1); // Reset to first page on search
+                }}
+                className="w-full max-w-md px-3 py-2 bg-background border border-input rounded-md"
+              />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {pagination.total} {pagination.total === 1 ? 'item' : 'itens'}
+            </div>
+          </div>
+        </div>
         <table className="w-full">
           <thead className="bg-secondary">
             <tr>
@@ -541,6 +569,36 @@ export default function InventoryPage() {
             )}
           </tbody>
         </table>
+        
+        {/* Pagination Controls */}
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+            <div className="text-sm text-muted-foreground">
+              Página {pagination.page} de {pagination.totalPages}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page === 1}
+                className="p-2 bg-secondary rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Página anterior"
+              >
+                <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+              </button>
+              <span className="px-3 py-1 text-sm">
+                {page}
+              </span>
+              <button
+                onClick={() => setPage(Math.min(pagination.totalPages, page + 1))}
+                disabled={page >= pagination.totalPages}
+                className="p-2 bg-secondary rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Próxima página"
+              >
+                <ChevronRight className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Create Modal */}
