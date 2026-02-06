@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo run dev --filter=!appsdesktop",
+    "dev": "turbo run dev --filter=!@aagc/desktop",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "db:migrate": "pnpm -C apps/api prisma migrate deploy",
