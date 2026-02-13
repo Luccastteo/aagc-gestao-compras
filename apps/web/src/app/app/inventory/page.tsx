@@ -62,9 +62,11 @@ export default function InventoryPage() {
   const importMutation = useMutation({
     mutationFn: itemsApi.importExcel,
     onSuccess: (result) => {
-      setImportResult(result);
+      setImportResult(result ?? { created: 0, updated: 0, errors: 0, details: {} });
       setImportError(null);
       queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['items', 'critical'] });
+      queryClient.invalidateQueries({ queryKey: ['items', 'analyze'] });
     },
     onError: (error: any) => {
       console.error('Import error:', error);
@@ -250,29 +252,41 @@ export default function InventoryPage() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const data = new Uint8Array(event.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        
-        // Remove linhas vazias durante a leitura
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-          defval: '',
-          blankrows: false  // Remove linhas completamente vazias
-        });
-        
-        if (jsonData.length === 0) {
-          alert('A planilha está vazia ou não possui dados válidos.');
+        const result = event.target?.result;
+        if (!result) {
+          setImportError('Não foi possível ler o arquivo.');
+          setImportData([]);
+          setImportResult(null);
+          setShowImportModal(true);
           return;
         }
-        
-        // Normaliza os nomes das colunas
+        const data = new Uint8Array(result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) {
+          setImportError('O arquivo não contém planilhas.');
+          setImportData([]);
+          setImportResult(null);
+          setShowImportModal(true);
+          return;
+        }
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          defval: '',
+          raw: false,
+          blankrows: false,
+        });
+
+        if (!jsonData || jsonData.length === 0) {
+          setImportData([]);
+          setImportResult(null);
+          setImportError('A planilha está vazia. Use a primeira linha para os títulos (ex.: SKU, Descricao) e as próximas para os dados.');
+          setShowImportModal(true);
+          return;
+        }
+
         let normalizedData = normalizeColumnNames(jsonData);
-        
-        // Remove linhas que estão completamente vazias após normalização
         normalizedData = normalizedData.filter(row => !isRowEmpty(row));
-        
-        // Limpa os valores de cada linha
         normalizedData = normalizedData.map(row => {
           const cleanedRow: any = {};
           for (const key of Object.keys(row)) {
@@ -283,47 +297,50 @@ export default function InventoryPage() {
           }
           return cleanedRow;
         });
-        
-        // Remove linhas que não têm SKU E Descrição válidos
-        normalizedData = normalizedData.filter(row => {
-          const hasSKU = row.SKU && String(row.SKU).trim() !== '';
-          const hasDesc = row.Descricao && String(row.Descricao).trim() !== '';
+
+        const validRows = normalizedData.filter(row => {
+          const hasSKU = row.SKU != null && String(row.SKU).trim() !== '';
+          const hasDesc = row.Descricao != null && String(row.Descricao).trim() !== '';
           return hasSKU && hasDesc;
         });
-        
-        if (normalizedData.length === 0) {
-          const columns = Object.keys(jsonData[0] || {}).join(', ');
-          alert(`Nenhum dado válido encontrado!\n\nColunas encontradas: ${columns}\n\nA planilha deve ter pelo menos as colunas SKU (ou Codigo) e Descricao (ou Nome/Produto) com valores preenchidos.`);
-          return;
-        }
-        
+
         setImportData(normalizedData);
         setImportResult(null);
-        
-        // Detecta se há colunas extras (não esperadas)
-        const firstRow = normalizedData[0] || {};
-        const allowedColumns = ['SKU', 'Descricao', 'Estoque_Atual', 'Estoque_Minimo', 'Estoque_Maximo', 'Custo_Unitario', 'Lead_Time_Dias', 'Localizacao', 'Observacoes'];
-        const actualColumns = Object.keys(firstRow);
-        const extraColumns = actualColumns.filter(col => !allowedColumns.includes(col));
-        
-        if (extraColumns.length > 0) {
-          setImportError(`ℹ️ Aviso: Seu Excel possui ${extraColumns.length} coluna(s) extra(s) que serão ignoradas. Somente as colunas do template serão importadas: ${allowedColumns.join(', ')}.`);
+
+        if (validRows.length === 0) {
+          const first = normalizedData[0] || {};
+          const cols = Object.keys(first).join(', ');
+          setImportError(`Nenhum item válido. Encontradas colunas: ${cols || 'nenhuma'}. A primeira linha deve ser o cabeçalho (SKU ou Codigo, Descricao ou Nome) e as demais os dados.`);
         } else {
-          setImportError(null);
+          const firstRow = normalizedData[0] || {};
+          const allowedColumns = ['SKU', 'Descricao', 'Estoque_Atual', 'Estoque_Minimo', 'Estoque_Maximo', 'Custo_Unitario', 'Lead_Time_Dias', 'Localizacao', 'Observacoes', 'Categoria', 'Unidade'];
+          const actualColumns = Object.keys(firstRow);
+          const extraColumns = actualColumns.filter(col => !allowedColumns.includes(col));
+          if (extraColumns.length > 0) {
+            setImportError(`ℹ️ Colunas extras serão ignoradas: ${extraColumns.join(', ')}.`);
+          } else {
+            setImportError(null);
+          }
         }
-        
+
         setShowImportModal(true);
       } catch (error) {
         console.error('Parse error:', error);
-        alert('Erro ao ler arquivo Excel. Verifique se o arquivo é válido.');
+        setImportError('Erro ao ler o Excel. Verifique se o arquivo é .xlsx ou .xls e se a primeira linha tem os títulos das colunas.');
+        setImportData([]);
+        setImportResult(null);
+        setShowImportModal(true);
       }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.onerror = () => {
+      setImportError('Falha ao ler o arquivo. Tente outro arquivo.');
+      setImportData([]);
+      setImportResult(null);
+      setShowImportModal(true);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsArrayBuffer(file);
-    
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
   // Execute import
@@ -762,11 +779,13 @@ export default function InventoryPage() {
               <div className="space-y-4">
                 <div className="p-4 bg-secondary rounded-lg">
                   <p className="text-sm">
-                    <strong>{importData.length}</strong> itens encontrados no arquivo.
-                    Revise os dados abaixo antes de confirmar a importação.
+                    <strong>{importData.length}</strong> linha(s) lida(s) do arquivo.
+                    {importData.filter(r => r.SKU && r.Descricao).length > 0
+                      ? ' Revise os dados abaixo e clique em "Confirmar Importação".'
+                      : ' Adicione colunas SKU (ou Codigo) e Descricao (ou Nome) na primeira linha e preencha os dados.'}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Colunas obrigatórias: SKU (ou Codigo) e Descricao (ou Nome). Demais colunas são opcionais.
+                    Primeira linha = cabeçalho. Colunas obrigatórias: SKU (ou Codigo) e Descricao (ou Nome/Produto).
                   </p>
                 </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -28,8 +28,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
+    mountedRef.current = true;
     const userId = localStorage.getItem('userId');
     const userData = localStorage.getItem('user');
 
@@ -38,7 +40,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setUser(JSON.parse(userData));
+    try {
+      const parsed = JSON.parse(userData);
+      // Defer setState to after commit so we don't update before mount (Next/React strictness)
+      queueMicrotask(() => {
+        if (mountedRef.current) setUser(parsed);
+      });
+    } catch {
+      router.push('/login');
+    }
+
+    return () => {
+      mountedRef.current = false;
+    };
   }, [router]);
 
   const handleLogout = async () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings, User, Lock, Bell, Shield, LogOut, Check, AlertCircle } from 'lucide-react';
 import { authApi, tokenStorage } from '@/lib/api';
@@ -10,7 +10,8 @@ export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('profile');
-  
+  const mountedRef = useRef(false);
+
   // Password change state
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -20,10 +21,21 @@ export default function SettingsPage() {
   const [passwordSuccess, setPasswordSuccess] = useState('');
 
   useEffect(() => {
+    mountedRef.current = true;
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
-      setUser(JSON.parse(storedUser));
+      try {
+        const parsed = JSON.parse(storedUser);
+        queueMicrotask(() => {
+          if (mountedRef.current) setUser(parsed);
+        });
+      } catch {
+        // ignore invalid stored user
+      }
     }
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const passwordStrength = validatePasswordStrength(newPassword);

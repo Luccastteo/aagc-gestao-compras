@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Bot, Lock, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
@@ -11,6 +11,7 @@ export default function ResetPasswordClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
+  const mountedRef = useRef(false);
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,9 +21,15 @@ export default function ResetPasswordClient() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
+    mountedRef.current = true;
     if (!token) {
-      setError('Token de recuperação não encontrado');
+      queueMicrotask(() => {
+        if (mountedRef.current) setError('Token de recuperação não encontrado');
+      });
     }
+    return () => {
+      mountedRef.current = false;
+    };
   }, [token]);
 
   const passwordStrength = validatePasswordStrength(password);

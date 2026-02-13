@@ -20,12 +20,12 @@ async function main() {
 
   console.log('✅ Organization created:', org.name);
 
-  // Create users with different roles
+  // Create users with different roles (sempre atualiza a senha para demo123 ao rodar seed)
   const hashedPassword = await bcrypt.hash('demo123', 10);
 
   const owner = await prisma.user.upsert({
     where: { email: 'owner@demo.com' },
-    update: {},
+    update: { password: hashedPassword, name: 'João Silva (Owner)', role: 'OWNER', organizationId: org.id },
     create: {
       email: 'owner@demo.com',
       password: hashedPassword,
@@ -37,7 +37,7 @@ async function main() {
 
   const manager = await prisma.user.upsert({
     where: { email: 'manager@demo.com' },
-    update: {},
+    update: { password: hashedPassword, name: 'Maria Santos (Manager)', role: 'MANAGER', organizationId: org.id },
     create: {
       email: 'manager@demo.com',
       password: hashedPassword,
@@ -49,7 +49,7 @@ async function main() {
 
   const operator = await prisma.user.upsert({
     where: { email: 'operator@demo.com' },
-    update: {},
+    update: { password: hashedPassword, name: 'Carlos Oliveira (Operator)', role: 'OPERATOR', organizationId: org.id },
     create: {
       email: 'operator@demo.com',
       password: hashedPassword,
@@ -61,7 +61,7 @@ async function main() {
 
   const viewer = await prisma.user.upsert({
     where: { email: 'viewer@demo.com' },
-    update: {},
+    update: { password: hashedPassword, name: 'Ana Costa (Viewer)', role: 'VIEWER', organizationId: org.id },
     create: {
       email: 'viewer@demo.com',
       password: hashedPassword,

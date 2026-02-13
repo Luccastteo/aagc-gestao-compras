@@ -26,7 +26,7 @@ export class AIController {
 
     // Buscar alertas críticos (para demanda)
     const alerts = await this.prisma.inventoryAlert.findMany({
-      where: { organizationId, status: { in: ['OPEN', 'PENDING'] } },
+      where: { organizationId, status: { in: ['OPEN', 'ACK'] } },
       include: { item: true },
       orderBy: { createdAt: 'desc' },
       take: 10,
@@ -36,7 +36,7 @@ export class AIController {
     const suggestions = await this.prisma.purchaseSuggestion.findMany({
       where: { organizationId, status: 'OPEN' },
       include: { item: true, supplier: true },
-      orderBy: { urgencyScore: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take: 10,
     });
 
@@ -44,7 +44,7 @@ export class AIController {
     const supplierPerformance = await this.prisma.supplierPerformance.findMany({
       where: { organizationId },
       include: { supplier: true },
-      orderBy: { overallScore: 'desc' },
+      orderBy: { qualityScore: 'desc' },
       take: 10,
     });
 
@@ -58,37 +58,37 @@ export class AIController {
     // Formatar para o frontend
     const demandForecasts = alerts.map((alert, idx) => ({
       itemId: alert.itemId,
-      itemName: alert.item.nome,
+      itemName: alert.item.descricao,
       sku: alert.item.sku,
       currentStock: alert.item.saldo,
       predictedDemand30d: alert.item.maximo - alert.item.saldo,
       confidence: 0.80 - (idx * 0.05),
       trend: alert.severity === 'HIGH' ? 'UP' : 'STABLE',
-      alertType: alert.alertType,
+      alertType: alert.reason,
       severity: alert.severity,
     }));
 
     const supplierRankings = supplierPerformance.map((sp, idx) => ({
       supplierId: sp.supplierId,
       name: sp.supplier.nome,
-      score: Number(sp.overallScore) || 0,
+      score: (Number(sp.qualityScore) + Number(sp.onTimeDeliveryRate) * 100 + Number(sp.priceCompetitiveness) + Number(sp.communicationScore)) / 4 || 0,
       rank: idx + 1,
       factors: {
         onTime: Number(sp.onTimeDeliveryRate) || 0,
         quality: Number(sp.qualityScore) || 0,
         price: Number(sp.priceCompetitiveness) || 0,
-        communication: Number(sp.responseTime) ? Math.max(0, 100 - Number(sp.responseTime)) : 70,
+        communication: Number(sp.communicationScore) || 70,
       },
-      ordersDelivered: sp.ordersDelivered,
-      period: sp.period,
+      ordersDelivered: sp.completedOrders,
+      period: `${sp.dataFrom?.toISOString().slice(0, 10)} a ${sp.dataTo?.toISOString().slice(0, 10)}`,
     }));
 
     const recentDecisions = decisions.map((d) => ({
       id: d.id,
       type: d.decisionType,
-      item: d.suggestedAction || 'N/A',
-      confidence: Number(d.confidenceScore) || 0,
-      result: d.outcome || 'PENDING',
+      item: d.llmExplanation || d.decision || 'N/A',
+      confidence: Number(d.confidence) || 0,
+      result: d.decision || 'PENDING',
       reasoning: d.reasoning,
       timestamp: d.createdAt.toISOString(),
     }));
@@ -97,14 +97,14 @@ export class AIController {
     const purchaseSuggestions = suggestions.map((s) => ({
       id: s.id,
       itemId: s.itemId,
-      itemName: s.item.nome,
+      itemName: s.item.descricao,
       sku: s.item.sku,
       supplierId: s.supplierId,
       supplierName: s.supplier?.nome || 'Sem fornecedor',
       suggestedQty: s.suggestedQty,
       unitCost: Number(s.unitCost),
       estimatedTotal: Number(s.estimatedTotal),
-      urgencyScore: s.urgencyScore,
+      urgencyScore: s.suggestedQty,
       status: s.status,
       reason: s.reason,
     }));

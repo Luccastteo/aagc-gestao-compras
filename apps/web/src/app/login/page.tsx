@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
@@ -13,6 +13,14 @@ export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [apiError, setApiError] = useState('');
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const {
     register,
@@ -30,27 +38,51 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setApiError('');
 
+    const email = (data.email ?? '').toString().trim().toLowerCase();
+    const password = (data.password ?? '').toString().trim();
+
     try {
-      const result = await authApi.login(data.email, data.password);
-      
-      if (result.error) {
-        setApiError(result.error);
+      const result = await authApi.login(email, password);
+      const res = result?.data ?? result;
+
+      if (res?.error) {
+        setApiError(res.error);
         return;
       }
 
-      if (!result.user || !result.user.userId) {
+      const user = res?.user;
+      const userId = user?.userId ?? user?.id;
+      if (!user || !userId) {
         setApiError('Resposta inválida do servidor');
         return;
       }
 
-      await tokenStorage.set({ accessToken: result.accessToken, refreshToken: result.refreshToken });
-      localStorage.setItem('userId', result.user.userId);
-      localStorage.setItem('user', JSON.stringify(result.user));
-      
+      const accessToken = res?.accessToken;
+      const refreshToken = res?.refreshToken;
+      if (!accessToken) {
+        setApiError('Sessão inválida. Tente novamente.');
+        return;
+      }
+
+      await tokenStorage.set({
+        accessToken,
+        refreshToken: refreshToken ?? accessToken,
+      });
+      localStorage.setItem('userId', userId);
+      localStorage.setItem('user', JSON.stringify({ ...user, userId }));
       router.push('/app/dashboard');
     } catch (err: any) {
-      console.error('Login error:', err);
-      setApiError(err.response?.data?.message || err.response?.data?.error || 'Falha no login. Verifique suas credenciais.');
+      if (!mountedRef.current) return;
+      const msg = err.response?.data?.message ?? err.response?.data?.error;
+      const text = Array.isArray(msg) ? msg.join(', ') : (msg ?? '');
+      const isCredentialError = text && (text.includes('Credenciais') || text.includes('inválidas') || err.response?.status === 401);
+      setApiError(
+        err.code === 'ERR_NETWORK'
+          ? 'Não foi possível conectar à API. Verifique se o servidor está rodando (porta 3003).'
+          : isCredentialError
+            ? 'E-mail ou senha incorretos. Use as contas demo (ex.: manager@demo.com / demo123). Se acabou de instalar, rode: pnpm db:seed'
+            : text || 'Falha no login. Tente novamente.',
+      );
     }
   };
 

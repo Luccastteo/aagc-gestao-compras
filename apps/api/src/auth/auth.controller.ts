@@ -18,17 +18,31 @@ export class AuthController {
   @Public()
   @Post('login')
   async login(@Body() loginDto: LoginDto) {
+    const email = (loginDto?.email ?? '').toString().trim().toLowerCase();
+    const password = (loginDto?.password ?? '').toString().trim();
+    if (!email || !password) {
+      throw new UnauthorizedException('E-mail e senha são obrigatórios');
+    }
     try {
-      console.log('🔐 Login attempt:', loginDto.email);
-
-      const result = await this.authService.login(loginDto.email, loginDto.password);
-      
-      console.log('✅ User logged in:', result.user.email);
-
-      return result;
-    } catch (error) {
-      console.error('❌ Login error:', error.message);
-      throw error;
+      const result = await this.authService.login(email, password);
+      return {
+        user: {
+          userId: result.user.userId,
+          email: result.user.email,
+          name: result.user.name,
+          role: result.user.role,
+          organizationId: result.user.organizationId,
+          organizationName: result.user.organizationName,
+        },
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresIn: result.expiresIn,
+      };
+    } catch (error: any) {
+      const message = error?.message || 'Credenciais inválidas';
+      throw new UnauthorizedException(
+        message.includes('Credenciais') || message.includes('inválidas') ? message : 'Credenciais inválidas',
+      );
     }
   }
 

@@ -73,13 +73,17 @@ async function bootstrap() {
   });
 
   // CORS
-  const originsRaw = process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000';
+  const originsRaw = process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3002';
   const origins = originsRaw
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+  if (process.env.NODE_ENV !== 'production' && !origins.includes('http://127.0.0.1:3002')) {
+    origins.push('http://127.0.0.1:3002');
+  }
+  // Em desenvolvimento: permitir qualquer origem (ex.: acessar por IP 192.168.x.x:3000)
   app.enableCors({
-    origin: origins,
+    origin: process.env.NODE_ENV === 'production' ? origins : true,
     credentials: true,
   });
 
@@ -93,7 +97,7 @@ async function bootstrap() {
   );
 
   // Get port first
-  const port = process.env.PORT || 3001;
+  const port = process.env.PORT || 3003;
 
   // Swagger (apenas em desenvolvimento ou se explicitamente habilitado)
   const enableSwagger = process.env.ENABLE_SWAGGER === 'true' || process.env.NODE_ENV === 'development';
