@@ -103,7 +103,18 @@ export class NotificationsService {
     };
   }
 
+  private escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   private formatEmailHtml(assunto: string, mensagem: string): string {
+    const safeAssunto = this.escapeHtml(assunto);
+    const safeMensagem = this.escapeHtml(mensagem);
     return `
 <!DOCTYPE html>
 <html>
@@ -124,12 +135,12 @@ export class NotificationsService {
       <p style="margin: 5px 0 0 0; opacity: 0.9;">Gestão Inteligente de Compras</p>
     </div>
     <div class="content">
-      <h2>${assunto}</h2>
-      <div style="white-space: pre-line;">${mensagem}</div>
+      <h2>${safeAssunto}</h2>
+      <div style="white-space: pre-line;">${safeMensagem}</div>
     </div>
     <div class="footer">
       <p>Este email foi enviado automaticamente pelo sistema AAGC.</p>
-      <p>© ${new Date().getFullYear()} AAGC - Todos os direitos reservados</p>
+      <p>&copy; ${new Date().getFullYear()} AAGC - Todos os direitos reservados</p>
     </div>
   </div>
 </body>
@@ -436,10 +447,11 @@ export class NotificationsService {
 
   // ========== GET NOTIFICATION HISTORY ==========
   async getHistory(organizationId: string, limit = 50) {
+    const safeLimit = Math.min(Math.max(1, limit), 200);
     return this.prisma.commsLog.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
-      take: limit,
+      take: safeLimit,
     });
   }
 

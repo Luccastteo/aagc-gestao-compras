@@ -15,11 +15,20 @@ interface TokenPayload {
 @Injectable()
 export class AuthService {
   private readonly jwtSecret: string;
+  private readonly refreshTokenSecret: string;
   private readonly accessTokenExpiry = '15m';  // 15 minutes
   private readonly refreshTokenExpiry = '7d';  // 7 days
 
   constructor(private prisma: PrismaService) {
-    this.jwtSecret = process.env.JWT_SECRET || 'default-secret-change-in-production';
+    const secret = process.env.JWT_SECRET;
+    if (!secret || secret === 'default-secret-change-in-production') {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('CRITICAL: JWT_SECRET env var must be set to a strong, unique secret in production');
+      }
+      console.warn('⚠️ JWT_SECRET not set. Using insecure default for development only.');
+    }
+    this.jwtSecret = secret || 'dev-only-insecure-secret-do-not-use-in-prod';
+    this.refreshTokenSecret = this.jwtSecret + ':refresh';
   }
 
   async validateUser(email: string, password: string) {
@@ -64,12 +73,13 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = this.generateRefreshToken(user);
 
-    // Store refresh token hash in database (optional for token revocation)
+    // Store refresh token hash for revocation support
+    const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
     await this.prisma.user.update({
       where: { id: user.userId },
-      data: { 
+      data: {
         lastLogin: new Date(),
-        // Store refresh token hash for validation
+        refreshTokenHash,
       },
     });
 
@@ -102,13 +112,13 @@ export class AuthService {
       type: 'refresh',
     };
 
-    return jwt.sign(payload, this.jwtSecret, { expiresIn: this.refreshTokenExpiry });
+    return jwt.sign(payload, this.refreshTokenSecret, { expiresIn: this.refreshTokenExpiry });
   }
 
   // Refresh access token using refresh token
   async refreshToken(refreshToken: string) {
     try {
-      const payload = jwt.verify(refreshToken, this.jwtSecret) as TokenPayload;
+      const payload = jwt.verify(refreshToken, this.refreshTokenSecret) as TokenPayload;
 
       if (payload.type !== 'refresh') {
         throw new UnauthorizedException('Token inválido');
@@ -121,6 +131,12 @@ export class AuthService {
 
       if (!user || !user.isActive) {
         throw new UnauthorizedException('Usuário não encontrado ou inativo');
+      }
+
+      // Validate refresh token hasn't been revoked (e.g. by logout)
+      const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+      if (user.refreshTokenHash && user.refreshTokenHash !== tokenHash) {
+        throw new UnauthorizedException('Refresh token revogado');
       }
 
       const newAccessToken = this.generateAccessToken({
@@ -181,10 +197,13 @@ export class AuthService {
       },
     });
 
-    // In production, send email with reset link
+    // Build reset link
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
 
-    console.log('📧 Reset password URL:', resetUrl);
+    // Only log reset URL in development (contains secret token)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📧 Reset password URL:', resetUrl);
+    }
 
     // TODO: Send email with reset link using NotificationsService
 
@@ -257,6 +276,14 @@ export class AuthService {
     });
 
     return { message: 'Senha alterada com sucesso' };
+  }
+
+  // Invalidate refresh token on logout
+  async logout(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { refreshTokenHash: null },
+    });
   }
 
   async getSession(userId: string) {

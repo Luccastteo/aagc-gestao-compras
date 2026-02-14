@@ -4,6 +4,15 @@ Use este guia **toda vez** que for subir a aplicação.
 
 ---
 
+## Forma mais fácil (evita erro de porta / lock)
+
+**Dê dois cliques em:**  
+`RODAR_DEV.bat`
+
+Esse script libera as portas 3002 e 3003, remove o lock do Next.js (se existir) e roda `pnpm dev`. Use isso quando o `pnpm dev` no terminal der erro.
+
+---
+
 ## O que precisa estar aberto / rodando
 
 | # | O quê | Status |
@@ -66,3 +75,21 @@ pnpm dev
 - **API / Docs:** http://localhost:3003 e http://localhost:3003/api/docs  
 
 **Login demo:** `manager@demo.com` / `demo123`
+
+---
+
+## Por que `pnpm dev` dá erro toda vez?
+
+Dois motivos comuns:
+
+1. **Porta em uso** — A última vez que você rodou, o processo ficou nas portas 3002 (Web) ou 3003 (API). Na próxima vez, o novo processo não consegue usar a mesma porta.
+2. **Lock do Next.js** — O Next cria um arquivo de lock em `apps/web/.next/dev/lock`. Se o processo foi fechado sem encerrar direito, o lock fica lá e o Next reclama.
+
+**O que fazer:**
+
+- **Opção A:** Rodar **`RODAR_DEV.bat`** (ele já libera portas e remove o lock e depois sobe o app).
+- **Opção B (manual):** No terminal, na pasta do projeto:
+  1. Rodar `kill-ports.bat` (libera 3002 e 3003).
+  2. Se aparecer erro de "lock", apagar o arquivo:  
+     `del apps\web\.next\dev\lock`
+  3. Rodar de novo: `pnpm dev`.

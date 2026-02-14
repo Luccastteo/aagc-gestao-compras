@@ -79,9 +79,9 @@ echo.
 echo ============================================
 echo    Serviços disponíveis:
 echo ============================================
-echo    Frontend: http://localhost:3000
-echo    API:      http://localhost:3001
-echo    Docs:     http://localhost:3001/api/docs
+echo    Frontend: http://localhost:3002
+echo    API:      http://localhost:3003
+echo    Docs:     http://localhost:3003/api/docs
 echo ============================================
 echo.
 echo Pressione Ctrl+C para parar

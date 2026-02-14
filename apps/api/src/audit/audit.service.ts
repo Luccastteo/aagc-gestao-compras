@@ -6,7 +6,8 @@ export class AuditService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(organizationId: string, params?: any) {
-    const { page = 1, limit = 50, entity, action, userId } = params || {};
+    const { page = 1, limit: rawLimit = 50, entity, action, userId } = params || {};
+    const limit = Math.min(Math.max(1, Number(rawLimit) || 50), 200);
 
     const where: any = { organizationId };
 

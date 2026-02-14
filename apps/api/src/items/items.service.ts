@@ -172,6 +172,9 @@ export class ItemsService {
         throw new BadRequestException('Insufficient stock');
       }
     } else if (tipo === 'AJUSTE') {
+      if (quantidade < 0) {
+        throw new BadRequestException('Quantidade de ajuste não pode ser negativa');
+      }
       saldoDepois = quantidade;
     }
 

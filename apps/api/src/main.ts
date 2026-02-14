@@ -61,8 +61,8 @@ async function bootstrap() {
             baseUri: ["'self'"],
             frameAncestors: ["'none'"],
             objectSrc: ["'none'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"], // Swagger/some clients precisam
-            styleSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'"], // unsafe-inline removido em produção por segurança
+            styleSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline necessário para estilos inline
             imgSrc: ["'self'", 'data:', 'https:'], // data: para base64, https: para CDNs
             connectSrc: ["'self'"],
             fontSrc: ["'self'", 'data:'],

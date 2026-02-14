@@ -21,6 +21,11 @@ export class PaginationDto {
 
   @IsOptional()
   @IsString()
+  @IsIn([
+    'createdAt', 'updatedAt', 'nome', 'sku', 'descricao', 'saldo',
+    'minimo', 'maximo', 'custoUnitario', 'codigo', 'status', 'valorTotal',
+    'dataAbertura', 'email', 'titulo', 'posicao',
+  ], { message: 'sortBy deve ser um campo permitido' })
   sortBy?: string;
 
   @IsOptional()

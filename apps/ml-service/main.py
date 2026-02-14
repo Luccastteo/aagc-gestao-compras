@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
@@ -13,6 +13,16 @@ app = FastAPI(title="AAGC ML Service", version="1.0.0")
 # Config
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://aagc:aagc_dev_password@localhost:5432/aagc_db")
 engine = create_engine(DATABASE_URL)
+
+# Internal API key for service-to-service auth
+ML_API_KEY = os.getenv("ML_API_KEY", "")
+
+async def verify_api_key(x_api_key: str = Header(None, alias="X-API-Key")):
+    """Verify the internal API key for service-to-service communication."""
+    if ML_API_KEY and x_api_key != ML_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    if not ML_API_KEY and os.getenv("NODE_ENV") == "production":
+        raise HTTPException(status_code=500, detail="ML_API_KEY must be configured in production")
 
 # ============================================
 # SCHEMAS
@@ -58,7 +68,7 @@ class SupplierRankingResponse(BaseModel):
 def fetch_consumption_history(org_id: str, item_id: str, days: int = 180) -> pd.DataFrame:
     """Busca histórico de consumo do banco"""
     query = text("""
-        SELECT 
+        SELECT
             date,
             quantity,
             day_of_week as "dayOfWeek",
@@ -66,12 +76,12 @@ def fetch_consumption_history(org_id: str, item_id: str, days: int = 180) -> pd.
             quarter,
             is_holiday as "isHoliday"
         FROM consumption_history
-        WHERE organization_id = :org_id 
+        WHERE organization_id = :org_id
           AND item_id = :item_id
-          AND date >= CURRENT_DATE - INTERVAL ':days days'
+          AND date >= CURRENT_DATE - make_interval(days => :days)
         ORDER BY date ASC
     """)
-    
+
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, params={'org_id': org_id, 'item_id': item_id, 'days': days})
     
@@ -257,7 +267,7 @@ def rank_suppliers(df: pd.DataFrame) -> List[Dict]:
 # ============================================
 
 @app.post("/api/ml/forecast/demand", response_model=DemandForecastResponse)
-async def forecast_demand(request: DemandForecastRequest):
+async def forecast_demand(request: DemandForecastRequest, _=Depends(verify_api_key)):
     """Previsão de demanda usando Prophet"""
     
     try:
@@ -287,7 +297,7 @@ async def forecast_demand(request: DemandForecastRequest):
         raise HTTPException(status_code=500, detail=f"Erro na previsão: {str(e)}")
 
 @app.post("/api/ml/urgency/score", response_model=UrgencyScoreResponse)
-async def score_urgency(request: UrgencyScoreRequest):
+async def score_urgency(request: UrgencyScoreRequest, _=Depends(verify_api_key)):
     """Calcula score de urgência de compra"""
     
     result = calculate_urgency_score(
@@ -300,7 +310,7 @@ async def score_urgency(request: UrgencyScoreRequest):
     return UrgencyScoreResponse(**result)
 
 @app.post("/api/ml/suppliers/rank", response_model=SupplierRankingResponse)
-async def rank_suppliers_endpoint(request: SupplierRankingRequest):
+async def rank_suppliers_endpoint(request: SupplierRankingRequest, _=Depends(verify_api_key)):
     """Ranqueia fornecedores por performance"""
     
     df = fetch_supplier_performance(request.organization_id, request.supplier_ids)

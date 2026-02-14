@@ -8,18 +8,12 @@ import { LoginDto, RefreshTokenDto, ForgotPasswordDto, ResetPasswordDto, ChangeP
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  @Public()
-  @Get('test')
-  test() {
-    return { message: 'Auth controller is working!' };
-  }
-
   // Login with JWT tokens
   @Public()
   @Post('login')
   async login(@Body() loginDto: LoginDto) {
     const email = (loginDto?.email ?? '').toString().trim().toLowerCase();
-    const password = (loginDto?.password ?? '').toString().trim();
+    const password = (loginDto?.password ?? '').toString(); // never trim passwords
     if (!email || !password) {
       throw new UnauthorizedException('E-mail e senha são obrigatórios');
     }
@@ -97,11 +91,10 @@ export class AuthController {
     return this.authService.getSession(user.userId);
   }
 
-  // Logout (optional - client should just delete tokens)
+  // Logout - invalidates refresh token server-side
   @Post('logout')
   async logout(@CurrentUser() user: CurrentUserData) {
-    // In a more advanced implementation, you would invalidate the refresh token
-    console.log('👋 User logged out:', user.email);
+    await this.authService.logout(user.userId);
     return { message: 'Logout realizado com sucesso' };
   }
 }

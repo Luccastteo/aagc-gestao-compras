@@ -93,17 +93,17 @@ export class PurchaseOrdersService {
     // Multi-tenant enforcement: valida IDs pertencem à org.
     await this.assertSupplierBelongsToOrg(data.supplierId, organizationId);
 
-    const lastPO = await this.prisma.purchaseOrder.findFirst({
-      where: { organizationId },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const count = lastPO ? parseInt(lastPO.codigo.split('-').pop() || '0') + 1 : 1;
-    const codigo = `PO-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`;
-
     let valorTotal = 0;
 
     const created = await this.prisma.$transaction(async (tx) => {
+      // Generate PO code inside transaction to avoid race conditions
+      const lastPO = await tx.purchaseOrder.findFirst({
+        where: { organizationId },
+        orderBy: { createdAt: 'desc' },
+      });
+      const count = lastPO ? parseInt(lastPO.codigo.split('-').pop() || '0') + 1 : 1;
+      const codigo = `PO-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`;
+
       const po = await tx.purchaseOrder.create({
         data: {
           codigo,

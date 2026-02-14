@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from '@/lib/api';
 import { 
@@ -10,15 +11,24 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { AnalyzeStockPopup, type AnalyzePopupStatus } from '@/components/analyze-stock-popup';
 
 export default function InventoryPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAnalyze, setShowAnalyze] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState<any[]>([]);
   const [importResult, setImportResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Popup "Analisar Estoque" (tarefa BullMQ)
+  const [showAnalyzePopup, setShowAnalyzePopup] = useState(false);
+  const [popupTaskId, setPopupTaskId] = useState('');
+  const [popupStatus, setPopupStatus] = useState<AnalyzePopupStatus>('running');
+  const [popupProgress, setPopupProgress] = useState(0);
+  const [popupError, setPopupError] = useState<string | null>(null);
   
   // Paginação server-side
   const [page, setPage] = useState(1);
@@ -39,6 +49,53 @@ export default function InventoryPage() {
     queryFn: itemsApi.analyze,
     enabled: showAnalyze,
   });
+
+  // Mutation para "Analisar Estoque" (dispara popup + barra de progresso)
+  const analyzeMutation = useMutation({
+    mutationFn: itemsApi.analyze,
+    onSuccess: () => {
+      setPopupProgress(100);
+      setPopupStatus('completed');
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['items', 'critical'] });
+      queryClient.invalidateQueries({ queryKey: ['items', 'analyze'] });
+      setShowAnalyze(true); // abre a seção de resultados
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message;
+      setPopupError(Array.isArray(msg) ? msg.join(', ') : msg || error.message || 'Erro ao analisar.');
+      setPopupStatus('error');
+    },
+  });
+
+  // Simula barra de progresso enquanto a análise roda
+  useEffect(() => {
+    if (!showAnalyzePopup || popupStatus !== 'running') return;
+    const interval = setInterval(() => {
+      setPopupProgress((p) => {
+        if (p >= 90) return 90;
+        return p + Math.random() * 8 + 4;
+      });
+    }, 280);
+    return () => clearInterval(interval);
+  }, [showAnalyzePopup, popupStatus]);
+
+  const runAnalyzeStock = useCallback(() => {
+    setPopupTaskId(String(Date.now()).slice(-4));
+    setPopupStatus('running');
+    setPopupProgress(0);
+    setPopupError(null);
+    setShowAnalyzePopup(true);
+    analyzeMutation.mutate();
+  }, [analyzeMutation]);
+
+  const hasTriggeredFromUrl = useRef(false);
+  // Ao abrir a página com ?analyze=1 (ex.: link do dashboard), dispara a análise uma vez
+  useEffect(() => {
+    if (hasTriggeredFromUrl.current || searchParams.get('analyze') !== '1') return;
+    hasTriggeredFromUrl.current = true;
+    runAnalyzeStock();
+  }, [searchParams, runAnalyzeStock]);
 
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -391,11 +448,13 @@ export default function InventoryPage() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => setShowAnalyze(!showAnalyze)}
-            className="flex items-center gap-2 px-4 py-2 bg-secondary text-foreground rounded-md hover:bg-secondary/80"
+            onClick={runAnalyzeStock}
+            disabled={analyzeMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-60"
+            aria-label="Analisar estoque com IA"
           >
-            <Bot className="w-4 h-4" />
-            {showAnalyze ? 'Ocultar Análise' : 'Analisar Produtos'}
+            <Bot className="w-4 h-4" aria-hidden />
+            Analisar Estoque
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -892,6 +951,17 @@ export default function InventoryPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Popup tarefa BullMQ: análise de estoque */}
+      {showAnalyzePopup && (
+        <AnalyzeStockPopup
+          taskId={popupTaskId}
+          status={popupStatus}
+          progress={popupProgress}
+          onClose={() => setShowAnalyzePopup(false)}
+          errorMessage={popupError}
+        />
       )}
     </div>
   );

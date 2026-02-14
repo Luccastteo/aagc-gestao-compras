@@ -3,18 +3,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import {
-  LayoutDashboard,
-  Package,
-  ShoppingCart,
-  Building2,
-  Kanban,
-  FileText,
-  LogOut,
-  Bot,
-  Bell,
-  Settings,
-} from 'lucide-react';
 import { authApi, tokenStorage } from '@/lib/api';
 
 const roleLabels: Record<string, string> = {
@@ -23,6 +11,30 @@ const roleLabels: Record<string, string> = {
   OPERATOR: 'Operador',
   VIEWER: 'Visualizador',
 };
+
+const navItems = [
+  { href: '/app/dashboard', label: 'Painel', icon: 'dashboard' },
+  { href: '/app/inventory', label: 'Produtos', icon: 'inventory_2' },
+  { href: '/app/purchase-orders', label: 'Pedidos de Compra', icon: 'shopping_cart' },
+  { href: '/app/suppliers', label: 'Fornecedores', icon: 'local_shipping' },
+  { href: '/app/kanban', label: 'Kanban', icon: 'view_kanban' },
+  { href: '/app/integrations', label: 'Integrações', icon: 'extension' },
+  { href: '/app/audit', label: 'Auditoria', icon: 'history_edu' },
+];
+
+function getBreadcrumb(pathname: string): { breadcrumb: string; title: string } {
+  const map: Record<string, { breadcrumb: string; title: string }> = {
+    '/app/dashboard': { breadcrumb: 'Páginas', title: 'Painel' },
+    '/app/inventory': { breadcrumb: 'Páginas', title: 'Produtos' },
+    '/app/purchase-orders': { breadcrumb: 'Páginas', title: 'Pedidos de Compra' },
+    '/app/suppliers': { breadcrumb: 'Páginas', title: 'Fornecedores' },
+    '/app/kanban': { breadcrumb: 'Páginas', title: 'Kanban' },
+    '/app/integrations': { breadcrumb: 'Páginas', title: 'Integrações' },
+    '/app/audit': { breadcrumb: 'Páginas', title: 'Auditoria' },
+    '/app/settings': { breadcrumb: 'Páginas', title: 'Configurações' },
+  };
+  return map[pathname] || { breadcrumb: 'Páginas', title: 'Painel' };
+}
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -42,7 +54,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     try {
       const parsed = JSON.parse(userData);
-      // Defer setState to after commit so we don't update before mount (Next/React strictness)
       queueMicrotask(() => {
         if (mountedRef.current) setUser(parsed);
       });
@@ -58,8 +69,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const handleLogout = async () => {
     try {
       await authApi.logout();
-    } catch (err) {
-      // Even if API fails, clear tokens
+    } catch {
       await tokenStorage.clear();
       localStorage.removeItem('userId');
       localStorage.removeItem('user');
@@ -69,142 +79,124 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse">Carregando...</div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-pulse text-slate-500">Carregando...</div>
       </div>
     );
   }
 
-  const navigation = [
-    { name: 'Painel', href: '/app/dashboard', icon: LayoutDashboard, color: 'blue' },
-    { name: 'Produtos', href: '/app/inventory', icon: Package, color: 'green' },
-    { name: 'Pedidos de Compra', href: '/app/purchase-orders', icon: ShoppingCart, color: 'orange' },
-    { name: 'Fornecedores', href: '/app/suppliers', icon: Building2, color: 'yellow' },
-    { name: 'Kanban', href: '/app/kanban', icon: Kanban, color: 'purple' },
-    { name: 'Integrações', href: '/app/integrations', icon: Bell, color: 'cyan' },
-    { name: 'Auditoria', href: '/app/audit', icon: FileText, color: 'pink' },
-    { name: 'Configurações', href: '/app/settings', icon: Settings, color: 'slate' },
-  ];
+  const { breadcrumb, title } = getBreadcrumb(pathname);
 
   return (
-    <div className="min-h-screen flex bg-background">
-      {/* Sidebar */}
-      <div className="w-64 border-r border-border flex flex-col">
-        <div className="p-6 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Bot className="w-6 h-6 text-cyan-400" />
-            <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">AAGC</h1>
+    <div className="flex h-screen overflow-hidden bg-white">
+      {/* Sidebar - fundo cinza claro, ícones sutis (estilo line-art) */}
+      <aside className="w-64 border-r border-slate-100 bg-slate-50/80 flex flex-col shrink-0 z-30">
+        <Link
+          href="/app/dashboard"
+          className="p-5 flex items-center gap-3 border-b border-slate-100/80 hover:bg-white/50 transition-colors"
+        >
+          <div className="w-8 h-8 bg-primary-600 rounded flex items-center justify-center text-white shrink-0 shadow-sm">
+            <span className="material-icons-round text-[20px] opacity-95">inventory_2</span>
           </div>
-          <p className="text-sm text-gray-400 mt-1">Gestão Inteligente de Produtos</p>
-        </div>
+          <span className="font-extrabold text-xl tracking-tight text-slate-800 whitespace-nowrap">
+            AAGC<span className="text-primary-600">.SaaS</span>
+          </span>
+        </Link>
 
-        <nav className="flex-1 p-4 space-y-1">
-          {navigation.map((item) => {
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          {navItems.map((item) => {
             const isActive = pathname === item.href;
-            const Icon = item.icon;
-            
-            // Cores específicas para cada item
-            const colorClasses = {
-              blue: {
-                bg: 'bg-blue-500/10',
-                text: 'text-blue-400',
-                border: 'border-blue-500/20',
-                icon: 'text-blue-400'
-              },
-              green: {
-                bg: 'bg-green-500/10',
-                text: 'text-green-400',
-                border: 'border-green-500/20',
-                icon: 'text-green-400'
-              },
-              orange: {
-                bg: 'bg-orange-500/10',
-                text: 'text-orange-400',
-                border: 'border-orange-500/20',
-                icon: 'text-orange-400'
-              },
-              yellow: {
-                bg: 'bg-yellow-500/10',
-                text: 'text-yellow-400',
-                border: 'border-yellow-500/20',
-                icon: 'text-yellow-400'
-              },
-              purple: {
-                bg: 'bg-purple-500/10',
-                text: 'text-purple-400',
-                border: 'border-purple-500/20',
-                icon: 'text-purple-400'
-              },
-              cyan: {
-                bg: 'bg-cyan-500/10',
-                text: 'text-cyan-400',
-                border: 'border-cyan-500/20',
-                icon: 'text-cyan-400'
-              },
-              pink: {
-                bg: 'bg-pink-500/10',
-                text: 'text-pink-400',
-                border: 'border-pink-500/20',
-                icon: 'text-pink-400'
-              },
-              slate: {
-                bg: 'bg-slate-500/10',
-                text: 'text-slate-300',
-                border: 'border-slate-500/20',
-                icon: 'text-slate-300'
-              }
-            };
-            
-            const colors = colorClasses[item.color as keyof typeof colorClasses];
-            
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-                  transition-all duration-200 ease-in-out
-                  ${
-                    isActive
-                      ? `${colors.bg} ${colors.text} shadow-sm border ${colors.border}`
-                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 border border-transparent'
-                  }
-                `}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                  isActive
+                    ? 'text-primary-600 bg-blue-50/90'
+                    : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
+                }`}
               >
-                <Icon 
-                  className={`w-5 h-5 transition-colors duration-200 ${
-                    isActive ? `${colors.icon} stroke-[2]` : 'text-gray-400'
-                  }`} 
-                />
-                <span className={isActive ? `font-semibold ${colors.text}` : 'font-normal'}>
-                  {item.name}
+                <span className={`material-icons-round text-[20px] ${isActive ? 'text-primary-600 opacity-95' : 'text-slate-400 opacity-80'}`}>
+                  {item.icon}
                 </span>
+                <span className="whitespace-nowrap">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-border">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <p className="text-sm font-medium">{user.name}</p>
-              <p className="text-xs text-muted-foreground">{roleLabels[user.role] || user.role}</p>
+        <div className="p-3 border-t border-slate-100/80">
+          <Link
+            href="/app/settings"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              pathname === '/app/settings'
+                ? 'text-primary-600 bg-blue-50/90'
+                : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
+            }`}
+          >
+            <span className="material-icons-round text-[20px] text-slate-400 opacity-90">settings</span>
+            <span className="whitespace-nowrap">Configurações</span>
+          </Link>
+        </div>
+      </aside>
+
+      {/* Main: Header + Content - minimalista, lupa e ícones sutis */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50/30">
+        <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0 z-20">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-slate-400">{breadcrumb}</span>
+            <span className="text-slate-300">/</span>
+            <span className="font-semibold text-slate-800">{title}</span>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="relative group hidden md:block">
+              <span className="material-icons-round absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px] opacity-70 group-focus-within:opacity-100 group-focus-within:text-primary-500 transition-all pointer-events-none select-none">
+                search
+              </span>
+              <input
+                type="text"
+                placeholder="Pesquisar recursos..."
+                className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm w-64 text-slate-700 focus:ring-1 focus:ring-primary-500/30 focus:border-primary-400/50 focus:bg-white transition-all outline-none placeholder:text-slate-400"
+                aria-label="Pesquisar recursos"
+              />
+            </div>
+
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full relative transition-colors"
+                aria-label="Notificações"
+              >
+                <span className="material-icons-round text-[20px] opacity-80">notifications</span>
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-400 rounded-full border-2 border-white" />
+              </button>
+
+              <div className="flex items-center gap-3 pl-4 border-l border-slate-100">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-semibold text-slate-800 leading-none">{user.name}</p>
+                  <p className="text-xs text-slate-400 mt-1">{roleLabels[user.role] || user.role}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  Sair
+                </button>
+                <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold text-sm ring-1 ring-slate-200/80 overflow-hidden">
+                  {user.name?.charAt(0)?.toUpperCase() || 'U'}
+                </div>
+              </div>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-all duration-200 border border-transparent hover:border-red-500/20"
-          >
-            <LogOut className="w-5 h-5 transition-colors duration-200" />
-            Sair
-          </button>
-        </div>
-      </div>
+        </header>
 
-      {/* Main content */}
-      <div className="flex-1 overflow-auto">
-        <div className="p-8">{children}</div>
-      </div>
+        {/* Content */}
+        <div className="flex-1 overflow-auto">
+          <div className="p-8 max-w-[1600px] mx-auto w-full">{children}</div>
+        </div>
+      </main>
     </div>
   );
 }
