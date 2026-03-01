@@ -7,6 +7,34 @@ import { PaginationDto, PaginatedResponse } from '../common/dto/pagination.dto';
 export class PurchaseOrdersService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Gera o próximo código PO para a organização no ano corrente.
+   * Reinicia a sequência a cada ano. Deve ser chamado dentro de uma transação.
+   */
+  private async generateNextPOCode(organizationId: string, tx: any): Promise<string> {
+    const year = new Date().getFullYear();
+    const yearPrefix = `PO-${year}-`;
+
+    const lastPO = await tx.purchaseOrder.findFirst({
+      where: {
+        organizationId,
+        codigo: { startsWith: yearPrefix },
+      },
+      orderBy: { codigo: 'desc' },
+      select: { codigo: true },
+    });
+
+    let sequence = 1;
+    if (lastPO) {
+      const parsed = parseInt(lastPO.codigo.split('-').pop() || '0', 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        sequence = parsed + 1;
+      }
+    }
+
+    return `${yearPrefix}${String(sequence).padStart(4, '0')}`;
+  }
+
   private async assertSupplierBelongsToOrg(supplierId: string, organizationId: string) {
     const supplier = await this.prisma.supplier.findFirst({
       where: { id: supplierId, organizationId },
@@ -29,7 +57,7 @@ export class PurchaseOrdersService {
 
   async findAll(organizationId: string, pagination?: PaginationDto): Promise<PaginatedResponse<any>> {
     const page = pagination?.page || 1;
-    const pageSize = Math.min(pagination?.pageSize || 20, 100);
+    const pageSize = Math.max(1, Math.min(pagination?.pageSize || 20, 100));
     const skip = (page - 1) * pageSize;
 
     const where: any = { organizationId };
@@ -96,13 +124,7 @@ export class PurchaseOrdersService {
     let valorTotal = 0;
 
     const created = await this.prisma.$transaction(async (tx) => {
-      // Generate PO code inside transaction to avoid race conditions
-      const lastPO = await tx.purchaseOrder.findFirst({
-        where: { organizationId },
-        orderBy: { createdAt: 'desc' },
-      });
-      const count = lastPO ? parseInt(lastPO.codigo.split('-').pop() || '0') + 1 : 1;
-      const codigo = `PO-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`;
+      const codigo = await this.generateNextPOCode(organizationId, tx);
 
       const po = await tx.purchaseOrder.create({
         data: {
@@ -209,13 +231,7 @@ export class PurchaseOrdersService {
       await this.assertSupplierBelongsToOrg(supplierId, organizationId);
 
       const result = await this.prisma.$transaction(async (tx) => {
-        // Gera código sequencial por org
-        const lastPO = await tx.purchaseOrder.findFirst({
-          where: { organizationId },
-          orderBy: { createdAt: 'desc' },
-        });
-        const count = lastPO ? parseInt(lastPO.codigo.split('-').pop() || '0') + 1 : 1;
-        const codigo = `PO-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`;
+        const codigo = await this.generateNextPOCode(organizationId, tx);
 
         let valorTotal = 0;
 
@@ -473,27 +489,40 @@ export class PurchaseOrdersService {
       throw new BadRequestException('Only DRAFT orders can be approved');
     }
 
-    const updated = await this.prisma.purchaseOrder.update({
-      where: { id },
-      data: {
-        status: 'APPROVED',
-        approvedById: userId,
-        dataAprovacao: new Date(),
-      },
-    });
+    // Atualização e audit log dentro de uma única transação para consistência
+    const after = await this.prisma.$transaction(async (tx) => {
+      await tx.purchaseOrder.update({
+        where: { id },
+        data: {
+          status: 'APPROVED',
+          approvedById: userId,
+          dataAprovacao: new Date(),
+        },
+      });
 
-    const after = await this.findOne(updated.id, organizationId);
+      const full = await tx.purchaseOrder.findFirst({
+        where: { id, organizationId },
+        include: {
+          supplier: true,
+          createdBy: { select: { name: true, email: true } },
+          approvedBy: { select: { name: true, email: true } },
+          items: { include: { item: true } },
+        },
+      });
 
-    await this.prisma.auditLog.create({
-      data: {
-        actorUserId: userId,
-        action: 'APPROVE',
-        entity: 'PurchaseOrder',
-        entityId: id,
-        before: JSON.stringify(po),
-        after: JSON.stringify(after),
-        organizationId,
-      },
+      await tx.auditLog.create({
+        data: {
+          actorUserId: userId,
+          action: 'APPROVE',
+          entity: 'PurchaseOrder',
+          entityId: id,
+          before: JSON.stringify(po),
+          after: JSON.stringify(full),
+          organizationId,
+        },
+      });
+
+      return full!;
     });
 
     return after;
@@ -506,41 +535,53 @@ export class PurchaseOrdersService {
       throw new BadRequestException('Only APPROVED orders can be sent');
     }
 
-    const updated = await this.prisma.purchaseOrder.update({
-      where: { id },
-      data: {
-        status: 'SENT',
-        dataEnvio: new Date(),
-        previsaoEntrega: new Date(Date.now() + po.supplier.prazoMedioDias * 24 * 60 * 60 * 1000),
-      },
-    });
+    // Atualização, comm log e audit log dentro de uma única transação
+    const after = await this.prisma.$transaction(async (tx) => {
+      await tx.purchaseOrder.update({
+        where: { id },
+        data: {
+          status: 'SENT',
+          dataEnvio: new Date(),
+          previsaoEntrega: new Date(Date.now() + po.supplier.prazoMedioDias * 24 * 60 * 60 * 1000),
+        },
+      });
 
-    // Simulated email/WhatsApp
-    const comm = await this.prisma.commsLog.create({
-      data: {
-        tipo: 'EMAIL',
-        destinatario: po.supplier.email || 'N/A',
-        assunto: `Pedido de Compra ${po.codigo}`,
-        mensagem: `Pedido enviado para ${po.supplier.nome}. Valor total: R$ ${po.valorTotal}`,
-        status: 'SIMULATED',
-        entity: 'PurchaseOrder',
-        entityId: po.id,
-        organizationId,
-      },
-    });
+      const comm = await tx.commsLog.create({
+        data: {
+          tipo: 'EMAIL',
+          destinatario: po.supplier.email || 'N/A',
+          assunto: `Pedido de Compra ${po.codigo}`,
+          mensagem: `Pedido enviado para ${po.supplier.nome}. Valor total: R$ ${po.valorTotal}`,
+          status: 'SIMULATED',
+          entity: 'PurchaseOrder',
+          entityId: po.id,
+          organizationId,
+        },
+      });
 
-    const after = await this.findOne(updated.id, organizationId);
+      const full = await tx.purchaseOrder.findFirst({
+        where: { id, organizationId },
+        include: {
+          supplier: true,
+          createdBy: { select: { name: true, email: true } },
+          approvedBy: { select: { name: true, email: true } },
+          items: { include: { item: true } },
+        },
+      });
 
-    await this.prisma.auditLog.create({
-      data: {
-        actorUserId: userId,
-        action: 'SEND',
-        entity: 'PurchaseOrder',
-        entityId: id,
-        before: JSON.stringify(po),
-        after: JSON.stringify({ purchaseOrder: after, commsLogId: comm.id }),
-        organizationId,
-      },
+      await tx.auditLog.create({
+        data: {
+          actorUserId: userId,
+          action: 'SEND',
+          entity: 'PurchaseOrder',
+          entityId: id,
+          before: JSON.stringify(po),
+          after: JSON.stringify({ purchaseOrder: full, commsLogId: comm.id }),
+          organizationId,
+        },
+      });
+
+      return full!;
     });
 
     return after;
@@ -562,7 +603,8 @@ export class PurchaseOrdersService {
       movementId?: string;
     }> = [];
 
-    const updated = await this.prisma.$transaction(async (tx) => {
+    // Toda a operação (estoque + status + audit) em uma única transação
+    const after = await this.prisma.$transaction(async (tx) => {
       // Update stock
       for (const poItem of po.items) {
         const item = await tx.item.findFirst({ where: { id: poItem.itemId, organizationId } });
@@ -597,7 +639,6 @@ export class PurchaseOrdersService {
           movementId: movement.id,
         });
 
-        // Audit por item (estoque)
         await tx.auditLog.create({
           data: {
             actorUserId: userId,
@@ -611,27 +652,33 @@ export class PurchaseOrdersService {
         });
       }
 
-      return tx.purchaseOrder.update({
+      await tx.purchaseOrder.update({
         where: { id },
-        data: {
-          status: 'DELIVERED',
-          dataRecebimento: new Date(),
+        data: { status: 'DELIVERED', dataRecebimento: new Date() },
+      });
+
+      const full = await tx.purchaseOrder.findFirst({
+        where: { id, organizationId },
+        include: {
+          supplier: true,
+          createdBy: { select: { name: true, email: true } },
+          items: { include: { item: true } },
         },
       });
-    });
 
-    const after = await this.findOne(updated.id, organizationId);
+      await tx.auditLog.create({
+        data: {
+          actorUserId: userId,
+          action: 'RECEIVE',
+          entity: 'PurchaseOrder',
+          entityId: id,
+          before: JSON.stringify(po),
+          after: JSON.stringify({ purchaseOrder: full, movements: movementsSummary }),
+          organizationId,
+        },
+      });
 
-    await this.prisma.auditLog.create({
-      data: {
-        actorUserId: userId,
-        action: 'RECEIVE',
-        entity: 'PurchaseOrder',
-        entityId: id,
-        before: JSON.stringify(po),
-        after: JSON.stringify({ purchaseOrder: after, movements: movementsSummary }),
-        organizationId,
-      },
+      return full!;
     });
 
     return after;

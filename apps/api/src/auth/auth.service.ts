@@ -229,11 +229,8 @@ export class AuthService {
       throw new BadRequestException('Token inválido ou expirado');
     }
 
-    // Validate password strength
-    if (newPassword.length < 6) {
-      throw new BadRequestException('A senha deve ter pelo menos 6 caracteres');
-    }
-
+    // Validação de força feita no DTO (ResetPasswordDto usa @IsStrongPassword).
+    // O service confia na validação já executada pelo ValidationPipe.
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await this.prisma.user.update({
@@ -264,10 +261,7 @@ export class AuthService {
       throw new UnauthorizedException('Senha atual incorreta');
     }
 
-    if (newPassword.length < 6) {
-      throw new BadRequestException('A nova senha deve ter pelo menos 6 caracteres');
-    }
-
+    // Validação de força feita no DTO (ChangePasswordDto usa @IsStrongPassword).
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await this.prisma.user.update({

@@ -8,7 +8,7 @@ export class SuppliersService {
 
   async findAll(organizationId: string, pagination?: PaginationDto): Promise<PaginatedResponse<any>> {
     const page = pagination?.page || 1;
-    const pageSize = Math.min(pagination?.pageSize || 20, 100);
+    const pageSize = Math.max(1, Math.min(pagination?.pageSize || 20, 100));
     const skip = (page - 1) * pageSize;
 
     const where: any = { organizationId };

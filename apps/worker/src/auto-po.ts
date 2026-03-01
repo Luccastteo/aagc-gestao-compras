@@ -150,23 +150,28 @@ function calculatePurchaseQty(item: CriticalItem): number {
  * Generate next PO code for organization
  */
 async function generatePOCode(orgId: string, tx: any): Promise<string> {
+  const year = new Date().getFullYear();
+  const yearPrefix = `PO-${year}-`;
+
+  // Busca o último PO DO ANO ATUAL para reiniciar a sequência a cada ano
   const lastPO = await tx.purchaseOrder.findFirst({
-    where: { organizationId: orgId },
-    orderBy: { createdAt: 'desc' },
+    where: {
+      organizationId: orgId,
+      codigo: { startsWith: yearPrefix },
+    },
+    orderBy: { codigo: 'desc' },
     select: { codigo: true },
   });
 
-  const year = new Date().getFullYear();
-  let count = 1;
-
+  let sequence = 1;
   if (lastPO) {
-    const match = lastPO.codigo.match(/PO-\d{4}-(\d+)/);
-    if (match) {
-      count = parseInt(match[1], 10) + 1;
+    const parsed = parseInt(lastPO.codigo.split('-').pop() || '0', 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      sequence = parsed + 1;
     }
   }
 
-  return `PO-${year}-${String(count).padStart(3, '0')}`;
+  return `${yearPrefix}${String(sequence).padStart(4, '0')}`;
 }
 
 /**

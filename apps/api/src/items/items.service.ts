@@ -9,7 +9,7 @@ export class ItemsService {
 
   async findAll(organizationId: string, pagination?: PaginationDto): Promise<PaginatedResponse<any>> {
     const page = pagination?.page || 1;
-    const pageSize = Math.min(pagination?.pageSize || 20, 100);
+    const pageSize = Math.max(1, Math.min(pagination?.pageSize || 20, 100));
     const skip = (page - 1) * pageSize;
 
     const where: any = { organizationId };
@@ -52,12 +52,16 @@ export class ItemsService {
   }
 
   async findCritical(organizationId: string) {
-    const items = await this.prisma.item.findMany({
-      where: { organizationId },
+    // Filtra diretamente no banco usando field reference (Prisma 5.3+)
+    // Evita carregar todos os itens em memória para filtrar em JS
+    return this.prisma.item.findMany({
+      where: {
+        organizationId,
+        saldo: { lte: this.prisma.item.fields.minimo },
+      },
       include: { supplier: true },
+      orderBy: { sku: 'asc' },
     });
-
-    return items.filter(item => item.saldo <= item.minimo);
   }
 
   async findOne(id: string, organizationId: string) {
@@ -216,12 +220,22 @@ export class ItemsService {
     // OBS: este método é chamado pelo Web no botão "Analisar Estoque".
     // Requisito do MVP: gerar ALERTAS e SUGESTÕES persistidas.
 
-    const items = await this.prisma.item.findMany({
-      where: { organizationId },
-      include: { supplier: true },
-    });
+    // Busca todos os IDs para determinar não-críticos, e críticos separadamente.
+    // Usa field reference (Prisma 5.3+) para comparar saldo <= minimo no banco.
+    const [allItemIds, critical] = await Promise.all([
+      this.prisma.item.findMany({
+        where: { organizationId },
+        select: { id: true },
+      }),
+      this.prisma.item.findMany({
+        where: {
+          organizationId,
+          saldo: { lte: this.prisma.item.fields.minimo },
+        },
+        include: { supplier: true },
+      }),
+    ]);
 
-    const critical = items.filter((item) => item.saldo <= item.minimo);
     const criticalIds = new Set(critical.map((i) => i.id));
 
     const beforeCounts = await this.prisma.$transaction([
@@ -313,7 +327,7 @@ export class ItemsService {
       }
 
       // Fecha alertas/sugestões OPEN que não são mais críticos (evita lixo/stale)
-      const nonCriticalIds = items.filter((i) => !criticalIds.has(i.id)).map((i) => i.id);
+      const nonCriticalIds = allItemIds.filter((i) => !criticalIds.has(i.id)).map((i) => i.id);
       if (nonCriticalIds.length > 0) {
         await tx.inventoryAlert.updateMany({
           where: { organizationId, status: 'OPEN', itemId: { in: nonCriticalIds } },
@@ -375,7 +389,7 @@ export class ItemsService {
     });
 
     return {
-      totalItems: items.length,
+      totalItems: allItemIds.length,
       itemsCriticos: critical.length,
       valorTotalEstimado: suggestions.reduce((sum, s) => sum + s.custoEstimado, 0),
       suggestions,
@@ -463,41 +477,51 @@ export class ItemsService {
       updated: [] as any[],
     };
 
+    // Função helper para converter números de forma segura
+    const safeNumber = (value: any, defaultValue: number): number => {
+      if (value === null || value === undefined || value === '') return defaultValue;
+      const num = Number(value);
+      return isNaN(num) || !isFinite(num) ? defaultValue : num;
+    };
+
+    // Valida e normaliza todas as linhas primeiro, separando erros imediatos
+    type ValidRow = { sku: string; descricao: string; rawRow: any };
+    const validRows: ValidRow[] = [];
+
     for (const row of items) {
+      if (!row.SKU || !row.Descricao) {
+        results.errors.push({ row, error: 'SKU e Descrição são obrigatórios' });
+        continue;
+      }
+      const sku = String(row.SKU).trim();
+      const descricao = String(row.Descricao).trim();
+      if (!sku || !descricao || sku === 'undefined' || descricao === 'undefined' || sku === 'null' || descricao === 'null') {
+        results.errors.push({ row, error: 'SKU e Descrição não podem ser vazios' });
+        continue;
+      }
+      validRows.push({ sku, descricao, rawRow: row });
+    }
+
+    if (validRows.length === 0) {
+      return {
+        message: 'Importação concluída',
+        created: 0,
+        updated: 0,
+        errors: results.errors.length,
+        details: results,
+      };
+    }
+
+    // Batch lookup: busca todos os SKUs existentes de uma vez (evita N queries)
+    const skus = validRows.map((r) => r.sku);
+    const existingItems = await this.prisma.item.findMany({
+      where: { organizationId, sku: { in: skus } },
+      select: { id: true, sku: true },
+    });
+    const existingMap = new Map(existingItems.map((i) => [i.sku, i.id]));
+
+    for (const { sku, descricao, rawRow: row } of validRows) {
       try {
-        // Validate required fields - verifica se existem e não são vazios
-        if (!row.SKU || !row.Descricao) {
-          results.errors.push({
-            row,
-            error: 'SKU e Descrição são obrigatórios',
-          });
-          continue;
-        }
-
-        const sku = String(row.SKU).trim();
-        const descricao = String(row.Descricao).trim();
-        
-        // Valida se após trim() ainda têm conteúdo
-        if (sku === '' || descricao === '' || sku === 'undefined' || descricao === 'undefined' || sku === 'null' || descricao === 'null') {
-          results.errors.push({
-            row,
-            error: 'SKU e Descrição não podem ser vazios',
-          });
-          continue;
-        }
-
-        // Check if item exists
-        const existing = await this.prisma.item.findFirst({
-          where: { sku, organizationId },
-        });
-
-        // Função helper para converter números de forma segura
-        const safeNumber = (value: any, defaultValue: number): number => {
-          if (value === null || value === undefined || value === '') return defaultValue;
-          const num = Number(value);
-          return isNaN(num) || !isFinite(num) ? defaultValue : num;
-        };
-
         const itemData = {
           sku,
           descricao,
@@ -511,37 +535,33 @@ export class ItemsService {
           localizacao: row.Localizacao && String(row.Localizacao).trim() !== '' ? String(row.Localizacao).trim() : null,
         };
 
-        if (existing) {
+        const existingId = existingMap.get(sku);
+
+        if (existingId) {
           // Update existing item
-          const updated = await this.prisma.item.update({
-            where: { id: existing.id },
-            data: itemData,
-          });
+          const [, updated] = await this.prisma.$transaction([
+            this.prisma.auditLog.create({
+              data: {
+                actorUserId: userId,
+                action: 'UPDATE',
+                entity: 'Item',
+                entityId: existingId,
+                organizationId,
+              },
+            }),
+            this.prisma.item.update({
+              where: { id: existingId },
+              data: itemData,
+            }),
+          ]);
 
-          // Audit log
-          await this.prisma.auditLog.create({
-            data: {
-              actorUserId: userId,
-              action: 'UPDATE',
-              entity: 'Item',
-              entityId: existing.id,
-              before: JSON.stringify(existing),
-              after: JSON.stringify(updated),
-              organizationId,
-            },
-          });
-
-          results.updated.push({ sku, id: existing.id });
+          results.updated.push({ sku, id: existingId });
         } else {
           // Create new item
           const created = await this.prisma.item.create({
-            data: {
-              ...itemData,
-              organizationId,
-            },
+            data: { ...itemData, organizationId },
           });
 
-          // Audit log
           await this.prisma.auditLog.create({
             data: {
               actorUserId: userId,
@@ -558,7 +578,7 @@ export class ItemsService {
       } catch (error) {
         results.errors.push({
           row,
-          error: error.message,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }

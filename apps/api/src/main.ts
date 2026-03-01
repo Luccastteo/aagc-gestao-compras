@@ -31,19 +31,17 @@ async function bootstrap() {
     max: rateLimitMax,
     timeWindow: rateLimitTTL,
     redis,
-    // Gera chave por orgId (se autenticado) + IP
+    // Gera chave por IP. NOTA: req.user não está disponível neste ponto (rate
+    // limiting ocorre antes da autenticação via guard), portanto usamos apenas IP.
     keyGenerator: (req: any) => {
       const ipHeader = req.headers?.['x-forwarded-for'];
       const forwarded = Array.isArray(ipHeader) ? ipHeader[0] : ipHeader;
-      const ip =
+      return (
         (typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : undefined) ||
         req.ip ||
         req.socket?.remoteAddress ||
-        'unknown';
-
-      // Se autenticado, combina orgId:IP para rate limit por tenant
-      const orgId = req.user?.organizationId;
-      return orgId ? `${orgId}:${ip}` : ip;
+        'unknown'
+      );
     },
     skipOnError: true, // Não bloquear requests se Redis falhar (graceful degradation)
   });
