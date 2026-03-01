@@ -20,11 +20,11 @@ Start all three app services at once (excluding desktop): `pnpm dev`
 
 ### Important gotchas
 
-- **Prisma schema drift**: The Prisma schema includes `refreshTokenHash` on the User model, but the checked-in migrations do not cover it. Run `pnpm -C apps/api prisma migrate dev --name add_refresh_token_hash --skip-generate` if the column is missing (seed will fail with `P2022` otherwise). After the first run, `pnpm db:migrate` is sufficient.
-- **Web `.env` API URL**: The `.env.example` in `apps/web` sets `NEXT_PUBLIC_API_URL=http://localhost:3003`, which is **wrong**. The API runs on port **3001**. Create `apps/web/.env` with `NEXT_PUBLIC_API_URL=http://localhost:3001`.
+- **Prisma migrations**: Always run `pnpm db:migrate` before `pnpm db:seed`. If the schema has drifted from migrations, use `pnpm -C apps/api prisma migrate dev` to create new migrations.
+- **Web `.env` API URL**: Ensure `apps/web/.env` has `NEXT_PUBLIC_API_URL=http://localhost:3001` (the API default port).
 - **CORS origins**: The API `.env` must include port **3002** in `CORS_ORIGINS` (e.g. `http://localhost:3002,http://localhost:3000`) since the web dev server runs on port 3002.
-- **API lint**: The API app has no ESLint config file — `pnpm -C apps/api lint` will fail. This is a pre-existing issue.
-- **Web lint**: Next.js 16 removed the `next lint` CLI subcommand — `pnpm -C apps/web lint` will fail. This is a pre-existing issue.
+- **API lint**: Uses `@typescript-eslint` via `.eslintrc.cjs`. Run `pnpm -C apps/api lint`.
+- **Web lint**: Uses `eslint` directly (Next.js 16 removed `next lint`). Run `pnpm -C apps/web lint`.
 - **Docker in Cloud Agent**: Docker must be started manually (`sudo dockerd &>/tmp/dockerd.log &`) before `docker compose up -d`. Socket permissions may need `sudo chmod 666 /var/run/docker.sock`.
 
 ### Standard commands

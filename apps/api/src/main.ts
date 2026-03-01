@@ -97,7 +97,7 @@ async function bootstrap() {
   );
 
   // Get port first
-  const port = process.env.PORT || 3003;
+  const port = process.env.PORT || 3001;
 
   // Swagger (apenas em desenvolvimento ou se explicitamente habilitado)
   const enableSwagger = process.env.ENABLE_SWAGGER === 'true' || process.env.NODE_ENV === 'development';

@@ -51,7 +51,7 @@ export function validatePasswordStrength(password: string, minLength = 10): Pass
     hasUppercase: /[A-Z]/.test(password),
     hasLowercase: /[a-z]/.test(password),
     hasNumber: /[0-9]/.test(password),
-    hasSymbol: /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password),
+    hasSymbol: /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(password),
     notCommon: !COMMON_PASSWORDS.has(password.toLowerCase()),
   };
 

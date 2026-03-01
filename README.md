@@ -41,7 +41,7 @@ pnpm dev
 ```
 
 Serviços disponíveis em:
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:3002
 - **API**: http://localhost:3001
 - **Worker**: Executando em background
 
@@ -201,7 +201,7 @@ pnpm tauri dev
 ```
 
 ### Desktop (Thin client) — notas
-- O desktop é uma **casca Tauri** que carrega o SaaS Web (por padrão `http://localhost:3000`).
+- O desktop é uma **casca Tauri** que carrega o SaaS Web (por padrão `http://localhost:3002`).
 - Tokens podem ser armazenados no **Keychain/Credential Manager** via comandos Tauri (`set_tokens/get_tokens/clear_tokens`) quando o Web estiver rodando dentro do desktop.
 
 ### Comandos do Banco de Dados
@@ -287,7 +287,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 ## 🧪 Testando o Sistema
 
 ### 1. Login
-- Acesse http://localhost:3000
+- Acesse http://localhost:3002
 - Faça login como `manager@demo.com / demo123`
 
 ### 2. Painel

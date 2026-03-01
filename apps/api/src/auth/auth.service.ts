@@ -150,7 +150,7 @@ export class AuthService {
         accessToken: newAccessToken,
         expiresIn: 900,
       };
-    } catch (error) {
+    } catch (_error) {
       throw new UnauthorizedException('Refresh token inválido ou expirado');
     }
   }

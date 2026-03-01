@@ -6,6 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "lint": "echo 'No lint configured for worker'",
     "test": "tsx src/auto-po.test.ts",
     "test:auto-po": "tsx src/auto-po.test.ts"
   },

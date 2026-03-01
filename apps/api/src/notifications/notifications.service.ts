@@ -478,7 +478,7 @@ export class NotificationsService {
   }
 
   // ========== NOTIFICATION SETTINGS ==========
-  async getSettings(organizationId: string) {
+  async getSettings(_organizationId: string) {
     return {
       emailEnabled: true,
       emailConfigured: this.emailConfigured,

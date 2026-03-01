@@ -1,27 +1,22 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { itemsApi, purchaseOrdersApi, auditApi } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 function StatusBadge({ item }: { item: { saldo: number; minimo: number } }) {
-  let status: 'critical' | 'low' | 'healthy' = 'healthy';
   let label = 'SAUDÁVEL';
   let className = 'bg-emerald-100 text-emerald-700';
 
   if (item.saldo === 0) {
-    status = 'critical';
     label = 'CRÍTICO';
     className = 'bg-red-100 text-red-700';
   } else if (item.saldo <= item.minimo) {
-    status = 'critical';
     label = 'CRÍTICO';
     className = 'bg-red-100 text-red-700';
   } else if (item.saldo <= item.minimo * 1.2) {
-    status = 'low';
     label = 'ESTOQUE BAIXO';
     className = 'bg-amber-100 text-amber-700';
   }
@@ -34,8 +29,6 @@ function StatusBadge({ item }: { item: { saldo: number; minimo: number } }) {
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
-
   const { data: itemsResponse } = useQuery({
     queryKey: ['items'],
     queryFn: () => itemsApi.getAll({ page: 1, pageSize: 100 }),
@@ -280,7 +273,6 @@ export default function DashboardPage() {
                 auditLogs.map((log: any, idx: number) => {
                   const isApprove = log.action === 'APPROVE';
                   const isCreate = log.action === 'CREATE';
-                  const isUpdate = log.action === 'UPDATE';
                   const icon = isApprove ? 'check_circle' : isCreate ? 'add_circle' : 'edit';
                   const color = isApprove
                     ? 'bg-emerald-100 text-emerald-600'

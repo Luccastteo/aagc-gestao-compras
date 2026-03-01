@@ -49,7 +49,7 @@ pnpm dev
 ## ✅ Pronto!
 
 Acesse:
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:3002
 - **API**: http://localhost:3001
 - **Docs**: http://localhost:3001/api/docs
 

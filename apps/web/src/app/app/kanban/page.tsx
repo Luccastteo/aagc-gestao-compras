@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kanbanApi } from '@/lib/api';
 import { 
-  Kanban as KanbanIcon, ArrowRight, CheckCircle2, 
+  Kanban as KanbanIcon, 
   Bell, Mail, MessageCircle, Bot
 } from 'lucide-react';
 import {

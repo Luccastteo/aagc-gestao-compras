@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { FastifyAdapter } from '@nestjs/platform-fastify';
 import request from 'supertest';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -15,10 +17,12 @@ describe('SuppliersController (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication(new FastifyAdapter());
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
     
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+
     prisma = app.get(PrismaService);
 
     // Create test org and user
@@ -32,17 +36,19 @@ describe('SuppliersController (e2e)', () => {
     });
     testOrgId = org.id;
 
+    const hashedPassword = await bcrypt.hash('test123', 10);
+
     const user = await prisma.user.create({
       data: {
         email: `test-sup-${Date.now()}@test.com`,
-        password: '$2b$10$abcdefghijklmnopqrstuv', // hashed "test123"
+        password: hashedPassword,
         name: 'Test User Suppliers',
         role: 'MANAGER',
         organizationId: org.id,
       },
     });
 
-    // Get token (assuming /auth/login exists)
+    // Get token
     const loginResponse = await request(app.getHttpServer())
       .post('/auth/login')
       .send({ email: user.email, password: 'test123' });
@@ -150,10 +156,12 @@ describe('SuppliersController (e2e)', () => {
         },
       });
 
+      const hashedPassword = await bcrypt.hash('test123', 10);
+
       const user2 = await prisma.user.create({
         data: {
           email: `other-sup-${Date.now()}@test.com`,
-          password: '$2b$10$abcdefghijklmnopqrstuv',
+          password: hashedPassword,
           name: 'Other User Suppliers',
           role: 'MANAGER',
           organizationId: org2.id,

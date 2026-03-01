@@ -13,11 +13,6 @@ const statusLabels: Record<string, string> = {
   CANCELLED: 'Cancelado',
 };
 
-const sourceLabels: Record<string, string> = {
-  MANUAL: 'Manual',
-  AUTO_REPLENISH: 'Automático',
-};
-
 export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [showCreateFromAnalysis, setShowCreateFromAnalysis] = useState(false);

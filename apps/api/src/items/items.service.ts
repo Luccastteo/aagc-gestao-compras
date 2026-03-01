@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto, PaginatedResponse } from '../common/dto/pagination.dto';
-import * as XLSX from 'xlsx';
 
 @Injectable()
 export class ItemsService {

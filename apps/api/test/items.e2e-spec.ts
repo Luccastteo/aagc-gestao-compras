@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { FastifyAdapter } from '@nestjs/platform-fastify';
 import request from 'supertest';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -15,10 +17,12 @@ describe('ItemsController (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication(new FastifyAdapter());
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
     
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+
     prisma = app.get(PrismaService);
 
     // Create test org and user
@@ -32,10 +36,12 @@ describe('ItemsController (e2e)', () => {
     });
     testOrgId = org.id;
 
+    const hashedPassword = await bcrypt.hash('test123', 10);
+
     const user = await prisma.user.create({
       data: {
         email: `test${Date.now()}@test.com`,
-        password: '$2b$10$abcdefghijklmnopqrstuv', // hashed "test123"
+        password: hashedPassword,
         name: 'Test User',
         role: 'MANAGER',
         organizationId: org.id,
@@ -93,7 +99,8 @@ describe('ItemsController (e2e)', () => {
         })
         .expect(400)
         .expect((res) => {
-          expect(res.body.message).toContain('saldo');
+          const messages = Array.isArray(res.body.message) ? res.body.message : [res.body.message];
+          expect(messages.some((m: string) => m.includes('saldo'))).toBe(true);
         });
     });
 
@@ -137,10 +144,12 @@ describe('ItemsController (e2e)', () => {
         },
       });
 
+      const hashedPassword = await bcrypt.hash('test123', 10);
+
       const user2 = await prisma.user.create({
         data: {
           email: `other${Date.now()}@test.com`,
-          password: '$2b$10$abcdefghijklmnopqrstuv',
+          password: hashedPassword,
           name: 'Other User',
           role: 'MANAGER',
           organizationId: org2.id,

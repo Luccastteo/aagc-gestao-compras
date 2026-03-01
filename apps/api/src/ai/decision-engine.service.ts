@@ -48,7 +48,7 @@ export class DecisionEngineService {
       );
 
       urgencyScore = urgencyResponse.data.urgency_score;
-    } catch (error) {
+    } catch (_error) {
       this.logger.warn('ML Service indisponível, usando score padrão');
     }
 
@@ -150,7 +150,7 @@ export class DecisionEngineService {
     return result._avg.quantity || 0;
   }
 
-  private defaultDecision(context: DecisionContext): DecisionResult {
+  private defaultDecision(_context: DecisionContext): DecisionResult {
     return {
       decision: 'ESCALATE',
       confidence: 0.5,

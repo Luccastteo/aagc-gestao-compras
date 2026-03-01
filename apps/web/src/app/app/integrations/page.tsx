@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '@/lib/api';
 import { 
   Bell, Mail, MessageCircle, Phone, 
-  Send, Settings, History, CheckCircle2,
+  Send, History, CheckCircle2,
   AlertCircle, Zap, Bot
 } from 'lucide-react';
 import { format } from 'date-fns';

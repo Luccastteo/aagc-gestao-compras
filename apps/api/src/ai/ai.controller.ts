@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -6,7 +6,7 @@ import { AIService } from './ai.service';
 import { RAGService } from './rag.service';
 import { DecisionEngineService } from './decision-engine.service';
 import { GetUser } from '../auth/decorators/get-user.decorator';
-import { SearchResult, DecisionResult, DecisionContext } from './interfaces';
+import { SearchResult, DecisionResult } from './interfaces';
 import { ChatDto, EvaluateDecisionDto } from './dto';
 import { PrismaService } from '../prisma/prisma.service';
 

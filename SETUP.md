@@ -33,7 +33,7 @@ pnpm dev
 
 | Serviço | URL | Descrição |
 |---------|-----|-----------|
-| Web | http://localhost:3000 | Frontend Next.js |
+| Web | http://localhost:3002 | Frontend Next.js |
 | API | http://localhost:3001 | Backend NestJS |
 | Prisma Studio | http://localhost:5555 | Visualizar banco |
 
@@ -159,8 +159,8 @@ TWILIO_WHATSAPP_FROM=""
 TWILIO_SMS_FROM=""
 
 # Frontend
-FRONTEND_URL="http://localhost:3000"
-CORS_ORIGINS="http://localhost:3000"
+FRONTEND_URL="http://localhost:3002"
+CORS_ORIGINS="http://localhost:3002"
 ```
 
 ### apps/web/.env
@@ -181,7 +181,7 @@ ML_DATA_COLLECTION_ENABLED="true"
 
 ## Fluxo de Compras (MVP)
 
-1. **Login** - Acesse http://localhost:3000/login com uma conta demo
+1. **Login** - Acesse http://localhost:3002/login com uma conta demo
 2. **Dashboard** - Visualize resumo do sistema
 3. **Estoque** - Veja itens e clique em "Analisar Estoque" para gerar alertas
 4. **Sugestões** - O sistema cria sugestões automáticas para itens críticos

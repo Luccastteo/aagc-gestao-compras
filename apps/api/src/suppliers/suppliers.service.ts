@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto, PaginatedResponse } from '../common/dto/pagination.dto';
 
@@ -61,6 +61,15 @@ export class SuppliersService {
   }
 
   async create(data: any, organizationId: string, actorUserId: string) {
+    if (data.codigo) {
+      const existing = await this.prisma.supplier.findUnique({
+        where: { organizationId_codigo: { organizationId, codigo: data.codigo } },
+      });
+      if (existing) {
+        throw new BadRequestException(`Supplier with codigo "${data.codigo}" already exists`);
+      }
+    }
+
     const created = await this.prisma.supplier.create({
       data: { ...data, organizationId },
     });

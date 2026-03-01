@@ -73,7 +73,7 @@ export default function SettingsPage() {
   const handleLogout = async () => {
     try {
       await authApi.logout();
-    } catch (err) {
+    } catch (_err) {
       // Even if API fails, clear local storage
       await tokenStorage.clear();
       localStorage.removeItem('userId');

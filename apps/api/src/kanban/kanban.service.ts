@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { KanbanStatus } from '@prisma/client';
-import { CreateCardDto, UpdateCardDto } from './dto';
+import { UpdateCardDto } from './dto';
 
 @Injectable()
 export class KanbanService {
@@ -300,7 +300,7 @@ export class KanbanService {
   }
 
   // Get notification settings for cards
-  async getNotificationSettings(organizationId: string) {
+  async getNotificationSettings(_organizationId: string) {
     return {
       notifyOnCreate: true,
       notifyOnMove: true,

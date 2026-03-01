@@ -36,7 +36,7 @@ const COMMON_PASSWORDS = new Set([
 
 @ValidatorConstraint({ name: 'isStrongPassword', async: false })
 export class IsStrongPasswordConstraint implements ValidatorConstraintInterface {
-  validate(password: string, args?: ValidationArguments): boolean {
+  validate(password: string, _args?: ValidationArguments): boolean {
     if (!password || typeof password !== 'string') {
       return false;
     }
@@ -64,7 +64,7 @@ export class IsStrongPasswordConstraint implements ValidatorConstraintInterface 
     }
 
     // Requisito 5: Pelo menos 1 símbolo
-    if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password)) {
+    if (!/[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(password)) {
       return false;
     }
 
@@ -77,7 +77,7 @@ export class IsStrongPasswordConstraint implements ValidatorConstraintInterface 
     return true;
   }
 
-  defaultMessage(args?: ValidationArguments): string {
+  defaultMessage(_args?: ValidationArguments): string {
     const minLength = parseInt(process.env.PASSWORD_MIN_LENGTH || '10', 10);
     return [
       `A senha deve ter no mínimo ${minLength} caracteres e incluir:`,
@@ -91,7 +91,7 @@ export class IsStrongPasswordConstraint implements ValidatorConstraintInterface 
 }
 
 export function IsStrongPassword(validationOptions?: ValidationOptions) {
-  return function (object: Object, propertyName: string) {
+  return function (object: object, propertyName: string) {
     registerDecorator({
       target: object.constructor,
       propertyName: propertyName,
